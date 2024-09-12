@@ -1,0 +1,43 @@
+{
+  "name": "vue-events-backbone",
+  "version": "1.0.1",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "description": "This plugin is a Pub/Sub queue that, by default, simulates DOM events propagation through vue components. It's possible to emit events also globally",
+  "keywords": [
+    "event",
+    "propagation",
+    "handler",
+    "vue",
+    "queue",
+    "emit",
+    "composition"
+  ],
+  "main": "./dist/vue-events-backbone.umd.cjs",
+  "module": "./dist/vue-events-backbone.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/vue-events-backbone.js",
+      "require": "./dist/vue-events-backbone.umd.cjs",
+      "types": "./dist/types/index.d.ts"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "@vitejs/plugin-vue": "^5.1.2",
+    "rollup-plugin-typescript2": "^0.36.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1",
+    "vite-plugin-dts": "^4.2.1",
+    "vue": "^3.4.37",
+    "vue-tsc": "^2.0.29"
+  }
+}
