@@ -39,7 +39,7 @@ export interface installEventsBackbone {
     install: (app: App) => void;
 }
 
-export type EventsBackboneEventHandler = ((be: EventsBackboneSpineEvent) => void)
+export type EventsBackboneEventHandler = ((be: EventsBackboneSpineEvent) => void);
 
 export interface EventsBackboneSpineEvent {
     emitterComponentInstance: ComponentInternalInstance
@@ -54,14 +54,16 @@ export interface EventsBackboneSpineEntryOption {
     once?: boolean | ((backboneEvent: EventsBackboneSpineEvent) => boolean)
 }
 
-export type EventsBackboneSpineEntryOptions = { [handlerName:string]: EventsBackboneSpineEntryOption }
+export type EventsBackboneSpineEntryOptions = { [handlerName:string]: EventsBackboneSpineEntryOption };
 
 export interface EventsBackboneSpineEntry {
     uid: number
     registeredHandlers: { [eventName:string]: Set<EventsBackboneEventHandler> }
 }
 
-export type EventsBackboneDirectiveParams = { [key:string]: { handler: EventsBackboneEventHandler, options?: EventsBackboneSpineEntryOption } }
+export type EventsBackboneDirectiveParam = { handler: EventsBackboneEventHandler, options?: EventsBackboneSpineEntryOption };
+
+export type EventsBackboneDirectiveParams = { [key:string]: Array<EventsBackboneDirectiveParam> };
 
 export type EventsBackboneEmitter = (<T>(data?: T, global?: boolean) => Promise<void>);
 

@@ -137,7 +137,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
           return;
         }
         this._internalEmitEvent(backboneEv);
-        return
+        return;
     }
 
     // if existing, gets event handler options for specific component instance, event and handler
@@ -290,14 +290,16 @@ export const BB: EventsBackboneSpine = EventsBackboneFactory(EventsBackboneSpine
 export const EventsBackBoneDirective: ObjectDirective<any, EventsBackboneDirectiveParams> = {
     mounted(el: HTMLElement, binding: any, vnode: any) {
         for (const eventKey in binding.value) {
-            BB.on(vnode.ctx, eventKey, binding.value[eventKey].handler, binding.value[eventKey].options);
+            for (const handlerParams of binding.value[eventKey]) {
+                BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
+            }
         }
     },
     beforeUpdate(el: HTMLElement, binding: DirectiveBinding, vnode: any, prevVnode: any) {
-      if (prevVnode.ctx.uid !== vnode.ctx.uid) {
-          BB.offAll(prevVnode.ctx.uid);
-          for (const eventKey in binding.value) {
-              BB.on(vnode.ctx, eventKey, binding.value[eventKey].handler, binding.value[eventKey].options);
+      BB.offAll(prevVnode.ctx.uid);
+      for (const eventKey in binding.value) {
+          for (const handlerParams of binding.value[eventKey]) {
+              BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
           }
       }
     },

@@ -32,7 +32,7 @@ The plugin is made to be easily used. It will export:
 
 - **the plugin installer to install with app.use()**
 - **the plugin directive to register on the app with app.directive()**, that will be used to register event listeners on those components that need to
-- **useBackbone** function that will return the internal EventsBackbone instance. This is to a more precise control of the mechanism
+- **useBackbone** function that will return the internal EventsBackbone instance. This is for a more precise control of the mechanism
 - **createEventsBackboneEmitter**, a Symbol that it's meant to be used for injecting the **EventsBackboneEmit** function. This
 must be called in a component lifecycle hook as it uses getCurrentInstance() internally.
 
@@ -51,7 +51,7 @@ app.directive("nameOfYourChoice", EventsBackBoneDirective);
 
 Then on the components for which you want to register the handler:
 ```
-<YourComponent v-nameOfYourChoice="{'eventName1': { handler: theHandlerFn, options?: EventsBackboneHandlerOption }, 'eventName2': ...}">
+<YourComponent v-nameOfYourChoice="{'eventName1': [{ handler: theHandlerFn, options?: EventsBackboneHandlerOption }, ...], 'eventName2': ...}">
 ```
 
 The directive handles the on/off of registered event listeners, according to the component lifecycle.
