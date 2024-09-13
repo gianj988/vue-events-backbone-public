@@ -1,6 +1,6 @@
 {
   "name": "vue-events-backbone",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": {
     "name": "Gianluca Pistorello",
     "email": "gianj988@gmail.com"
@@ -21,13 +21,16 @@
   "keywords": [
     "event",
     "events",
+    "custom",
     "bus",
     "bubble",
+    "bubbling",
     "propagation",
-    "handler",
+    "propagate",
     "vue",
     "queue",
-    "emit"
+    "emit",
+    "backbone"
   ],
   "main": "./dist/vue-events-backbone.umd.cjs",
   "module": "./dist/vue-events-backbone.js",
