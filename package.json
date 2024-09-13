@@ -1,19 +1,33 @@
 {
   "name": "vue-events-backbone",
-  "version": "1.0.1",
+  "version": "1.0.2",
+  "author": {
+    "name": "Gianluca Pistorello",
+    "email": "gian.pi988@gmail.com"
+  },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "README.md"
   ],
-  "description": "This plugin is a Pub/Sub queue that, by default, simulates DOM events propagation through vue components. It's possible to emit events also globally",
+  "bugs": "https://github.com/gianj988/vue-events-backbone-public/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gianj988/vue-events-backbone-public.git"
+  },
+  "description": "This plugin is an Event Bus that, by default, simulates DOM events propagation through vue components.",
   "keywords": [
     "event",
+    "events",
+    "bus",
+    "bubble",
     "propagation",
     "handler",
     "vue",
     "queue",
-    "emit",
-    "composition"
+    "emit"
   ],
   "main": "./dist/vue-events-backbone.umd.cjs",
   "module": "./dist/vue-events-backbone.js",

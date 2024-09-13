@@ -4,7 +4,7 @@ In Vue, custom events do not propagate through the components branch. A simple s
 is Dependency Injection with Provide/Inject to make component functions and properties available to
 its children.
 
-This plugin is essentially a **Pub/Sub queue** at its main core, but it is made to **simulate the DOM events propagation** 
+This plugin is essentially an **Event Bus** at its main core, but it is made to **simulate the DOM events propagation** 
 through vue components, including "**stopPropagation**" and "**once**" options for emitted events.
 This plugin does not need dependencies at all and it is developed for Vue3.
 To keep things separated, the EventsBackbone plugin **DOES NOT USE DOM events or vue emitters**, instead events are only keys 
@@ -66,6 +66,8 @@ import { createEventsBackboneEmitter } from 'vue-events-backbone';
 const yourCustomVariable: EventsBackboneEmitterGenerator | undefined = inject(createEventsBackboneEmitter);
 const yourEmitterRef: Ref<EventsBackboneEmitter | undefined> = ref();
 ```
+NOTE: if yourCustomVariable is undefined, there is some problem with your plugin installation
+
 2) inside one of component lifecycle hooks:
 ```
 onMounted(() => {
