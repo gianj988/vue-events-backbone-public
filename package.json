@@ -21,6 +21,11 @@
   "keywords": [
     "event",
     "events",
+    "event-handling",
+    "event-listener",
+    "event-management",
+    "event-chain",
+    "global-events",
     "custom",
     "bus",
     "bubble",
@@ -28,6 +33,7 @@
     "propagation",
     "propagate",
     "vue",
+    "vue3",
     "queue",
     "emit",
     "backbone"
