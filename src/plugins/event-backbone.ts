@@ -31,8 +31,6 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         return handlerName.trim().replace(/\s+/g, "_");
     }
 
-    //"vue-events-backbone": "^1.0.3",
-
     // calls the handler managing the options
     // returns a boolean to handle stopPropagation
     private _callHandler(h: EventsBackboneEventHandler, be: EventsBackboneSpineEvent, handlerOptions?: EventsBackboneSpineEntryOption): boolean {

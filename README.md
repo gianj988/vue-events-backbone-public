@@ -2,7 +2,7 @@
 I'll try my best to do backwards compatible bugfixes and changes, like this 1.1.0 one.
 For any bug please refer to the gitHub repository issues section. Thankyou)
 
-**1.1.0 CHANGE (backwards compatible)**: 
+**1.1.1 CHANGE (backwards compatible)**: 
 - now the **EventsBackboneSpineEvent** parameter passed to the handler function, will have 
 **stopPropagation** and **once** functions that can be called directly inside the handler (for a more natural native events handling).
 These two functions will directly set to true the respective value, overriding the relative handler option.
