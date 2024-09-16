@@ -1,3 +1,17 @@
+(sorry for the frequent updates but the package was born a bit "on the fly". 
+I'll try my best to do backwards compatible bugfixes and changes, like this 1.1.0 one.
+For any bug please refer to the gitHub repository issues section. Thankyou)
+
+**1.1.0 CHANGE (backwards compatible)**: 
+- now the **EventsBackboneSpineEvent** parameter passed to the handler function, will have 
+**stopPropagation** and **once** functions that can be called directly inside the handler (for a more natural native events handling).
+These two functions will directly set to true the respective value, overriding the relative handler option.
+However, stopPropagation will still depend on the global modifier, if the event emitted is global, stopPropagation will not 
+be set to true even if the handler inside calls ".stopPropagation()"
+Old handler options system is still working as always.
+
+- Better directive unexpected value type explanation.
+
 # EventsBackbone
 
 In Vue, custom events do not propagate through the components branch. A simple solution to this problem
@@ -57,6 +71,19 @@ Then on the components for which you want to register the handler:
 The directive handles the on/off of registered event listeners, according to the component lifecycle.
 It is advised to place the directive on the root tag of the component, although it should work anyway
 
+The type EventsBackboneHandlerOption accept two optional properties that can be both a function (accepting a **EventsBackboneSpineEvent** parameter) or a
+boolean:
+
+- **stopPropagation**
+- **once**
+
+If one of these properties is undefined or null, it'll be considered falsy and not applied.
+
+Eg.
+```
+{ handler: theHandlerFn, options: { stopPropagation: (be: EventsBackboneSpineEvent) => { return true }, once: true } }
+```
+
 **IMPORTANT NOTE: theHandlerFn must take a parameter of EventsBackboneSpineEvent type (importable from this package)**
 
 On components from which you want to emit events through the EventsBackbone, you'll have to:
@@ -76,13 +103,39 @@ onMounted(() => {
 ```
 
 yourEmitterRef hasn't necessarily to be a ref, it's sufficient to store the generated emitter function in a simple variable.
+
 The createEmitter function accept the event name and returns the emitter function.
+
 The emitter function, on its own accepts two arguments: the event data you want to pass and if the event has to be global (default false).
-The emitter fucntion, when called, will return a Promise<void> when the backbone will finish to call all the handlers.
-**The developer will have to create an emitter function for all events he'll want to emit through the EventsBackbone.**
+
+The emitter function, when called, will return a Promise<void> when the backbone will finish to call all the handlers.
+
+3) then when you want to emit the event, you'll have to simply call the Emitter Function:
+
+```
+yourEmitterRef.value(yourCustomEventData?, global?: true | false(default));
+```
+remember to check if yourEmitterRef has the function, because, in case of problems installing the plugin,
+**yourCustomVariable** will be undefined and consequently "**yourEmitterRef.value**" will also be undefined.
+
+**The developer will have to create an emitter function for all events he'll want to emit through the EventsBackbone. Once created, the emitter function**
+**can be called as many times as needed**
+Eg:
+
+I'm going to emit a "foo" event and a "bar" event from a component.
+Inside the lifecycle hook I will write:
+```
+onBeforeMount(() => {
+  fooEmitter.value = yourCustomVariable ? yourCustomVariable("foo") : undefined;
+  barEmitter.value = yourCustomVariable ? yourCustomVariable("bar") : undefined;
+})
+```
+
+from now on, I'll have those two emitter functions to call whenever I want.
 
 ### GENERAL NOTES:
 
-- **stopPropagation** option will NOT work if the event is emitted with global: true;
+- **stopPropagation** option will NOT work if the event is emitted with global: true, as in this case it's notpossible to consistently decide
+the order of handlers to call;
 - **once** option will unregister ONLY the specific handler for which the option is set, even if a component have registered
 more different handlers for the same event.

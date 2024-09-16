@@ -47,6 +47,8 @@ export interface EventsBackboneSpineEvent {
     eventName: string
     eventData?: any
     global?: boolean
+    stopPropagation: (() => void)
+    once: (() => void)
 }
 
 export interface EventsBackboneSpineEntryOption {

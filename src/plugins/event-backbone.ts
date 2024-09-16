@@ -31,37 +31,49 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         return handlerName.trim().replace(/\s+/g, "_");
     }
 
+    //"vue-events-backbone": "^1.0.3",
+
     // calls the handler managing the options
     // returns a boolean to handle stopPropagation
     private _callHandler(h: EventsBackboneEventHandler, be: EventsBackboneSpineEvent, handlerOptions?: EventsBackboneSpineEntryOption): boolean {
-        let propagationStopped = false;
+        let propagationStopped = null;
+        let once = null;
+        /*
+        * add possibility to call (and set) stop propagation inside the handler for a "more natural" way to call stopPropagation
+        * */
+        be.stopPropagation = () => {
+            propagationStopped = !be.global;
+        };
+        be.once = () => {
+            once = true;
+        };
         try {
             h(be);
         } catch (e: any) {
             console.error(e);
         }
-        if (handlerOptions) {
-            // handle stopPropagation option
-            if (handlerOptions.stopPropagation) {
-                try {
-                    propagationStopped = typeof handlerOptions.stopPropagation === 'function' ?
-                        (handlerOptions.stopPropagation(be) || propagationStopped) : (handlerOptions.stopPropagation || propagationStopped);
-                } catch (e: any) {
-                    console.error(e);
-                }
-            }
-            // handle once option
-            if (handlerOptions.once) {
-                try {
-                    if (typeof handlerOptions.once === 'function' ? handlerOptions.once(be) : handlerOptions.once) {
-                        this.off(be.handlerCallerComponentInstance.uid, be.eventName, h);
-                    }
-                } catch (e: any) {
-                    console.error(e);
-                }
+        // handle stopPropagation option if not handled earlier
+        if (Object.is(propagationStopped, null) && handlerOptions?.stopPropagation) {
+            try {
+                propagationStopped = typeof handlerOptions.stopPropagation === 'function' ?
+                    (handlerOptions.stopPropagation(be) || propagationStopped) : (handlerOptions.stopPropagation || propagationStopped);
+            } catch (e: any) {
+                console.error(e);
             }
         }
-        return propagationStopped;
+        // handle once option if not handled earlier
+        if (Object.is(once, null) && handlerOptions?.once) {
+            try {
+                if (typeof handlerOptions.once === 'function' ? handlerOptions.once(be) : handlerOptions.once) {
+                    this.off(be.handlerCallerComponentInstance.uid, be.eventName, h);
+                }
+            } catch (e: any) {
+                console.error(e);
+            }
+        } else if(once) {
+            this.off(be.handlerCallerComponentInstance.uid, be.eventName, h);
+        }
+        return !!propagationStopped;
     }
 
     // manages handlers when global has been set to true when event was emitted
@@ -130,7 +142,10 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
             handlerCallerComponentInstance: currentInstance,
             eventName: ev,
             eventData: data,
-            global: global
+            global: global,
+            // placeholders to avoid the optional parameters in type definition
+            stopPropagation: () => {},
+            once: () => {}
         }
         if(global) {
           this._internalEmitGlobalEvent(backboneEv);
@@ -290,16 +305,24 @@ export const BB: EventsBackboneSpine = EventsBackboneFactory(EventsBackboneSpine
 export const EventsBackBoneDirective: ObjectDirective<any, EventsBackboneDirectiveParams> = {
     mounted(el: HTMLElement, binding: any, vnode: any) {
         for (const eventKey in binding.value) {
-            for (const handlerParams of binding.value[eventKey]) {
-                BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
+            if(!Array.isArray(binding.value[eventKey])) {
+                console.warn(`${vnode?.ctx?.type.__name} - eventKey value for ${eventKey} must be an array`);
+            } else {
+                for (const handlerParams of binding.value[eventKey]) {
+                    BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
+                }
             }
         }
     },
     beforeUpdate(el: HTMLElement, binding: DirectiveBinding, vnode: any, prevVnode: any) {
       BB.offAll(prevVnode.ctx.uid);
       for (const eventKey in binding.value) {
-          for (const handlerParams of binding.value[eventKey]) {
-              BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
+          if(!Array.isArray(binding.value[eventKey])) {
+              console.warn(`${vnode?.ctx?.type.__name} - eventKey value for ${eventKey} must be an array`);
+          } else {
+              for (const handlerParams of binding.value[eventKey]) {
+                  BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
+              }
           }
       }
     },
