@@ -31,31 +31,29 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         return handlerName.trim().replace(/\s+/g, "_");
     }
 
-    // calls the handler managing the options
-    // returns a boolean to handle stopPropagation
-    private _callHandler(h: EventsBackboneEventHandler, be: EventsBackboneSpineEvent, handlerOptions?: EventsBackboneSpineEntryOption): boolean {
-        let propagationStopped = null;
+    private _callHandler(h: EventsBackboneEventHandler, be: EventsBackboneSpineEvent, handlerOptions?: EventsBackboneSpineEntryOption): any {
         let once = null;
-        /*
-        * add possibility to call (and set) stop propagation inside the handler for a "more natural" way to call stopPropagation
-        * */
         be.stopPropagation = () => {
-            propagationStopped = !be.global;
+             be.propagationStopped = !be.global;
         };
         be.once = () => {
             once = true;
         };
+        let retval;
         try {
-            h(be);
+            retval = h(be);
         } catch (e: any) {
+            console.error(`Error in handler function: ${h?.name} - event: ${be.eventName} - handler caller: ${be.handlerCallerComponentInstance?.type?.__name}`);
             console.error(e);
+            return e;
         }
         // handle stopPropagation option if not handled earlier
-        if (Object.is(propagationStopped, null) && handlerOptions?.stopPropagation) {
+        if (Object.is(be.propagationStopped, null) && handlerOptions?.stopPropagation) {
             try {
-                propagationStopped = typeof handlerOptions.stopPropagation === 'function' ?
-                    (handlerOptions.stopPropagation(be) || propagationStopped) : (handlerOptions.stopPropagation || propagationStopped);
+                 be.propagationStopped = typeof handlerOptions.stopPropagation === 'function' ?
+                    handlerOptions.stopPropagation(be) : handlerOptions.stopPropagation;
             } catch (e: any) {
+                console.error(`Error in stopPropagation option for handler function: ${h?.name} - event: ${be.eventName} - handler caller: ${be.handlerCallerComponentInstance?.type?.__name}`);
                 console.error(e);
             }
         }
@@ -66,32 +64,38 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
                     this.off(be.handlerCallerComponentInstance.uid, be.eventName, h);
                 }
             } catch (e: any) {
+                console.error(`Error in once option for handler function: ${h?.name} - event: ${be.eventName} - handler caller: ${be.handlerCallerComponentInstance?.type?.__name}`);
                 console.error(e);
             }
         } else if(once) {
             this.off(be.handlerCallerComponentInstance.uid, be.eventName, h);
         }
-        return !!propagationStopped;
+        return retval;
     }
 
     // manages handlers when global has been set to true when event was emitted
-    private _internalEmitGlobalEvent(backboneEvent: EventsBackboneSpineEvent): void {
-      for(const ci in this._internalComponentInstances) {
-        backboneEvent.handlerCallerComponentInstance = this._internalComponentInstances[ci];
-        if(this.spine[backboneEvent.handlerCallerComponentInstance.uid]?.registeredHandlers[backboneEvent.eventName]) {
-          for (const hand of this.spine[backboneEvent.handlerCallerComponentInstance.uid].registeredHandlers[backboneEvent.eventName]) {
-            this._callHandler(
-              hand,
-              backboneEvent,
-              this._getEventHandlerOpts(
-                backboneEvent.handlerCallerComponentInstance.uid,
-                backboneEvent.eventName,
-                this._normalizeHandlerName(hand.name)
-              )
-            )
-          }
+    private async _internalEmitGlobalEvent(backboneEvent: EventsBackboneSpineEvent): Promise<void> {
+        let defs: Promise<any>[] = [];
+        for(const ci in this._internalComponentInstances) {
+            backboneEvent.handlerCallerComponentInstance = this._internalComponentInstances[ci];
+            if(this.spine[backboneEvent.handlerCallerComponentInstance.uid]?.registeredHandlers[backboneEvent.eventName]) {
+                for (const hand of this.spine[backboneEvent.handlerCallerComponentInstance.uid].registeredHandlers[backboneEvent.eventName]) {
+                    let returnedFromHandler = this._callHandler(
+                        hand,
+                        backboneEvent,
+                        this._getEventHandlerOpts(
+                            backboneEvent.handlerCallerComponentInstance.uid,
+                            backboneEvent.eventName,
+                            this._normalizeHandlerName(hand.name)
+                        )
+                    )
+                    if((!backboneEvent.eager) && returnedFromHandler instanceof Promise) {
+                        defs.push(returnedFromHandler);
+                    }
+                }
+            }
         }
-      }
+        await Promise.allSettled(defs);
     }
 
     /*
@@ -100,28 +104,30 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     * @backboneEvent information of events: original emitter component instance,
     * component owner of the registered event handler, event name and event data
     */
-    private _internalEmitEvent(backboneEvent: EventsBackboneSpineEvent): void {
-        let propagationStopped = false;
+    private async _internalEmitEvent(backboneEvent: EventsBackboneSpineEvent, callerComponentInstance?: ComponentInternalInstance): Promise<void> {
+        backboneEvent.handlerCallerComponentInstance = callerComponentInstance || backboneEvent.emitterComponentInstance;
         if (this.spine[backboneEvent.handlerCallerComponentInstance.uid]?.registeredHandlers[backboneEvent.eventName]) {
-          for (const hand of this.spine[backboneEvent.handlerCallerComponentInstance.uid].registeredHandlers[backboneEvent.eventName]) {
-            propagationStopped = propagationStopped || this._callHandler(
-              hand,
-              backboneEvent,
-              this._getEventHandlerOpts(
-                backboneEvent.handlerCallerComponentInstance.uid,
-                backboneEvent.eventName,
-                this._normalizeHandlerName(hand.name)
-              )
-            )
-          }
+            let defs: Promise<any>[] = [];
+            for (const hand of this.spine[backboneEvent.handlerCallerComponentInstance.uid].registeredHandlers[backboneEvent.eventName]) {
+                let returnedFromHandler = this._callHandler(
+                    hand,
+                    backboneEvent,
+                    this._getEventHandlerOpts(
+                        backboneEvent.handlerCallerComponentInstance.uid,
+                        backboneEvent.eventName,
+                        this._normalizeHandlerName(hand.name)
+                    )
+                );
+                if((!backboneEvent.eager) && returnedFromHandler instanceof Promise) {
+                    defs.push(returnedFromHandler);
+                }
+            }
+            await Promise.allSettled(defs);
         }
-        if (propagationStopped) {
-          return;
+        if ((!backboneEvent.propagationStopped) && backboneEvent.handlerCallerComponentInstance.parent) {
+            await this._internalEmitEvent(backboneEvent, backboneEvent.handlerCallerComponentInstance.parent);
         }
-        if (backboneEvent.handlerCallerComponentInstance.parent) {
-            backboneEvent.handlerCallerComponentInstance = backboneEvent.handlerCallerComponentInstance.parent;
-            this._internalEmitEvent(backboneEvent);
-        }
+        return;
     }
 
     /*
@@ -134,23 +140,23 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     * @data?: any data to pass to handlers of the components chain
     * @global?: if event has to be emitted to all components that registered at least a handler for that event
     */
-    async emitEvent(currentInstance: ComponentInternalInstance, ev: string, data?: any, global?: boolean): Promise<void> {
+    emitEvent(currentInstance: ComponentInternalInstance, ev: string, data?: any, configs?: { global?: boolean, eager?: boolean }): Promise<void> {
         const backboneEv: EventsBackboneSpineEvent = {
             emitterComponentInstance: currentInstance,
             handlerCallerComponentInstance: currentInstance,
             eventName: ev,
             eventData: data,
-            global: global,
+            global: configs?.global || false,
+            propagationStopped: null,
+            eager: Object.is(configs?.eager, undefined) || Object.is(configs?.eager, null) ? true : !!configs?.eager || false,
             // placeholders to avoid the optional parameters in type definition
             stopPropagation: () => {},
             once: () => {}
         }
-        if(global) {
-          this._internalEmitGlobalEvent(backboneEv);
-          return;
+        if(configs?.global) {
+          return this._internalEmitGlobalEvent(backboneEv);
         }
-        this._internalEmitEvent(backboneEv);
-        return;
+        return this._internalEmitEvent(backboneEv);
     }
 
     // if existing, gets event handler options for specific component instance, event and handler
@@ -250,13 +256,15 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
           }
       } else {
         this._registerComponentInstance(componentInstance);
+        const newHandlerSet = new Set() as Set<EventsBackboneEventHandler>;
+        newHandlerSet.add(h);
         this.spine[uid] = {
             uid: uid,
-            registeredHandlers: {}
+            registeredHandlers: {
+                [ev]: newHandlerSet
+            }
         }
-        this.spine[uid].registeredHandlers[ev] = new Set();
       }
-      this.spine[uid].registeredHandlers[ev].add(h);
       this._addHandlerOptions(uid, ev, h, opts)
     }
 

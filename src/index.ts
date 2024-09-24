@@ -13,13 +13,13 @@ function installBackbone(app: App): void {
         const currentComponentInstance = getCurrentInstance();
         if (!currentComponentInstance) {
             console.warn("No current component instance. createBackboneEmitter has to be called inside a lifecycle hook.");
-            return (data?: any, global?: boolean) => {
+            return (data?: any, global?: boolean, eager?: boolean) => {
                 console.warn("Default backbone emitter called. No event transmitted through the backbone.");
                 return Promise.resolve();
             };
         }
-        return function (data?: any, global?: boolean) {
-            return BB.emitEvent(currentComponentInstance, evt, data, global);
+        return function (data?: any, global?: boolean, eager?: boolean) {
+            return BB.emitEvent(currentComponentInstance, evt, data, { global: global, eager: eager });
         }
     });
 }

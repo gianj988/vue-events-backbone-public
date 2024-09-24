@@ -1,8 +1,4 @@
-(sorry for the frequent updates but the package was born a bit "on the fly". 
-I'll try my best to do backwards compatible bugfixes and changes, like this 1.1.0 one.
-For any bug please refer to the gitHub repository issues section. Thankyou)
-
-**1.1.1 CHANGE (backwards compatible)**: 
+**1.1.1 CHANGES (backwards compatible)**: 
 - now the **EventsBackboneSpineEvent** parameter passed to the handler function, will have 
 **stopPropagation** and **once** functions that can be called directly inside the handler (for a more natural native events handling).
 These two functions will directly set to true the respective value, overriding the relative handler option.
@@ -11,6 +7,31 @@ be set to true even if the handler inside calls ".stopPropagation()"
 Old handler options system is still working as always.
 
 - Better directive unexpected value type explanation.
+
+**1.2.0 CHANGES {backwards compatible}**:
+- type EventsBackboneEmitter (the emitter functions type) now takes 3 optional parameters:
+    1) data: the data to pass with the event
+    2) global: if the emitted event must be considered global
+    3) eager: (true by default if nothing is passed) if set EXPLICITLY to false, the internal handlers caller function
+    awaits for handlers of a specific component to complete their execution (in case of async handlers) before stepping forward to handlers of the parent component.
+    This also implies that the promise returned by the invoked emitter function will become fulfilled accordingly to the handlers execution.
+
+- propagationStopped now is an information replicated on the EventsBackboneSpineEvent object 
+(for when there are more handlers registered for the same event and component and it may be useful to have this information)
+
+- small internal refactor to allow eager behaviour and preparing for future developments
+
+#### KNOWN BUGS
+
+- if an imported component is used inside the template section of a SFC and it has the backbone directive to register handlers, 
+the registered UID in the EventsBackbone is that of the imported component instead of the actual component of the SFC file.
+Temporary solution: wrap the imported component inside a standard html tag and put the directive on it. 
+
+### UPCOMING CHANGES
+
+- allow to define multiple emitter functions instead of calling the generator for each single event.
+- other internal refactoring and optimizations.
+- the bugfix for the bug previously noted.
 
 # EventsBackbone
 
@@ -32,6 +53,10 @@ object containing:
 4) the data passed through (optional)
 5) if event has been emitted globally as opposed to the default backbone behaviour that 
 follows the components tree branch from the emitter child to the root (optional, default false).
+6) if propagation has been stopped (useful if other handlers have been registered for the same event and component)
+7) eager if the handlers caller function is awaiting handlers execution (in case of async handlers)
+8) stopPropagation function to call inside the handler to stop propagation of the custom event
+9) once function to call inside the handler to unregister it once executed.
 
 This object will then be passed as argument to all handlers registered for the specified event.
 
@@ -50,6 +75,8 @@ The plugin is made to be easily used. It will export:
 - **createEventsBackboneEmitter**, a Symbol that it's meant to be used for injecting the **EventsBackboneEmit** function. This
 must be called in a component lifecycle hook as it uses getCurrentInstance() internally.
 
+### INSTALL THE PLUGIN ON YOUR VUE APP
+
 To install the plugin and the directive you have to import these two references:
 
 ```
@@ -63,13 +90,21 @@ app.use(installEventsBackbone);
 app.directive("nameOfYourChoice", EventsBackBoneDirective);
 ```
 
-Then on the components for which you want to register the handler:
+### REGISTER EVENT LISTENERS USING THE DIRECTIVE
+
+On the components for which you want to register the handler:
 ```
-<YourComponent v-nameOfYourChoice="{'eventName1': [{ handler: theHandlerFn, options?: EventsBackboneHandlerOption }, ...], 'eventName2': ...}">
+<template>
+  <YourComponentRootTag v-nameOfYourChoice="{'eventName1': [{ handler: theHandlerFn, options?: EventsBackboneHandlerOption }, ...], 'eventName2': ...}">
+    ...
+  </YourComponentRootTag>
+</template>
 ```
 
 The directive handles the on/off of registered event listeners, according to the component lifecycle.
 It is advised to place the directive on the root tag of the component, although it should work anyway
+
+**AAA see known bugs section on top of this readme**
 
 The type EventsBackboneHandlerOption accept two optional properties that can be both a function (accepting a **EventsBackboneSpineEvent** parameter) or a
 boolean:
@@ -85,6 +120,8 @@ Eg.
 ```
 
 **IMPORTANT NOTE: theHandlerFn must take a parameter of EventsBackboneSpineEvent type (importable from this package)**
+
+### EMIT CUSTOM EVENTS WITH DATA FROM A CHILD COMPONENT
 
 On components from which you want to emit events through the EventsBackbone, you'll have to:
 1) import the injection key for the createEmitter function: 
@@ -113,7 +150,7 @@ The emitter function, when called, will return a Promise<void> when the backbone
 3) then when you want to emit the event, you'll have to simply call the Emitter Function:
 
 ```
-yourEmitterRef.value(yourCustomEventData?, global?: true | false(default));
+yourEmitterRef.value(yourCustomEventData?, global?: true | false(default), eager?: true(default) | false);
 ```
 remember to check if yourEmitterRef has the function, because, in case of problems installing the plugin,
 **yourCustomVariable** will be undefined and consequently "**yourEmitterRef.value**" will also be undefined.

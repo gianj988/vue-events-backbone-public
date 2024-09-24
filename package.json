@@ -1,6 +1,6 @@
 {
   "name": "vue-events-backbone",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": {
     "name": "Gianluca Pistorello",
     "email": "gianj988@gmail.com"
@@ -17,6 +17,7 @@
     "type": "git",
     "url": "https://github.com/gianj988/vue-events-backbone-public.git"
   },
+  "homepage": "https://www.gianpacks.com",
   "description": "This plugin is an Event Bus that, by default, simulates DOM events propagation through vue components.",
   "keywords": [
     "event",

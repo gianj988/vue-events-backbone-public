@@ -21,7 +21,7 @@ export interface EventsBackboneSpineInterface {
     emitEvent(currentInstance: ComponentInternalInstance,
               ev: string,
               data?: any,
-              global?: boolean): void;
+              config?: { global?: boolean, eager?: boolean }): void;
 
     on(componentInstance: ComponentInternalInstance,
        ev: string,
@@ -47,6 +47,8 @@ export interface EventsBackboneSpineEvent {
     eventName: string
     eventData?: any
     global?: boolean
+    propagationStopped?: boolean | null
+    eager?: boolean | null
     stopPropagation: (() => void)
     once: (() => void)
 }
@@ -67,7 +69,7 @@ export type EventsBackboneDirectiveParam = { handler: EventsBackboneEventHandler
 
 export type EventsBackboneDirectiveParams = { [key:string]: Array<EventsBackboneDirectiveParam> };
 
-export type EventsBackboneEmitter = (<T>(data?: T, global?: boolean) => Promise<void>);
+export type EventsBackboneEmitter = (<T>(data?: T, global?: boolean, eager?: boolean) => Promise<void>);
 
 export type EventsBackboneEmitterGenerator = (evt: string) => EventsBackboneEmitter;
 
