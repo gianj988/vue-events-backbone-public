@@ -57,17 +57,19 @@ its children.
 This plugin is a complete Event Bus that simulates DOM events propagation but through components tree.
 it features:
 
-- asynchronous execution
+- asynchronous execution of handlers to avoid clogging main thread
 - no Vue 3 events handling modification
 - plugin installer app.use compatible
 - directive installable with app.directive to register event handlers from a component
 - event hierarchy definable directly with event naming
 - vue3-similar emitters instantiation
+- emitter functions return a promise to notify when it 
+has consumed all handlers (in eager mode or lazy) 
 - stopPropagation capability
 - once capability
+- transformEvent capability inside handlers to avoid stopPropagation and re-emitting the new event.
 - custom event data to pass (even functions, objects etc...)
 - possibility to emit an event globally instead of DOM-like events propagation
-- possibility to transform an event into another event inside an event handler, instead of stopping the propagation and emit the new event
 - error handling to avoid interrupting the propagation
 - focus on the ease-of-use
 
