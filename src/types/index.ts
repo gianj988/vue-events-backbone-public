@@ -15,9 +15,6 @@ export default plugin;
 export * from "../index";
 
 export interface EventsBackboneSpineInterface {
-
-    checkKeys(obj: any): number;
-
     emitEvent(currentInstance: ComponentInternalInstance,
               ev: string,
               data?: any,
@@ -45,24 +42,19 @@ export interface EventsBackboneSpineEvent {
     emitterComponentInstance: ComponentInternalInstance
     handlerCallerComponentInstance: ComponentInternalInstance
     eventName: string
+    branchSymbols: Array<Symbol>
     eventData?: any
     global?: boolean
     propagationStopped?: boolean | null
     eager?: boolean | null
     stopPropagation: (() => void)
     once: (() => void)
+    transformEvent: ((newName: string, newData?: any) => void)
 }
 
 export interface EventsBackboneSpineEntryOption {
     stopPropagation?: boolean | ((backboneEvent: EventsBackboneSpineEvent) => boolean)
     once?: boolean | ((backboneEvent: EventsBackboneSpineEvent) => boolean)
-}
-
-export type EventsBackboneSpineEntryOptions = { [handlerName:string]: EventsBackboneSpineEntryOption };
-
-export interface EventsBackboneSpineEntry {
-    uid: number
-    registeredHandlers: { [eventName:string]: Set<EventsBackboneEventHandler> }
 }
 
 export type EventsBackboneDirectiveParam = { handler: EventsBackboneEventHandler, options?: EventsBackboneSpineEntryOption };
@@ -71,6 +63,8 @@ export type EventsBackboneDirectiveParams = { [key:string]: Array<EventsBackbone
 
 export type EventsBackboneEmitter = (<T>(data?: T, global?: boolean, eager?: boolean) => Promise<void>);
 
-export type EventsBackboneEmitterGenerator = (evt: string) => EventsBackboneEmitter;
+export type EventsBackboneEmitters = { [evname:string]: EventsBackboneEmitter};
+
+export type EventsBackboneEmitterGenerator = <PT extends string | Array<string>>(evt: PT) => PT extends string ? EventsBackboneEmitter : EventsBackboneEmitters;
 
 export const createEventsBackboneEmitter: InjectionKey<EventsBackboneEmitterGenerator> = Symbol('EventsBackboneEmitter');

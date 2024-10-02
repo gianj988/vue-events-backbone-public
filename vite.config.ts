@@ -36,7 +36,8 @@ export default defineConfig({
         // for externalized deps
         globals: {
           vue: 'Vue'
-        }
+        },
+        exports: "named"
       }
     }
   }

@@ -1,37 +1,52 @@
 import type {ComponentInternalInstance, DirectiveBinding, ObjectDirective} from 'vue'
 import {
     EventsBackboneEventHandler,
-    EventsBackboneSpineEntry,
-    EventsBackboneSpineEntryOption, EventsBackboneSpineEntryOptions,
+    EventsBackboneSpineEntryOption,
     EventsBackboneSpineEvent,
     EventsBackboneDirectiveParams, EventsBackboneSpineInterface
 } from "../types";
 
-export interface EventsBackboneSpineConstructor {
+declare interface EventsBackboneSpineConstructor {
     new(): EventsBackboneSpine;
 }
 
+declare interface EventsRegistryEntry {
+    symbol: Symbol
+    children: Map<string, EventsRegistryEntry>
+    parent?: EventsRegistryEntry
+}
+
+type EventsRegistry = Map<string, EventsRegistryEntry>
+
+type ComponentListenersRegistry = Map<EventsBackboneEventHandler, EventsBackboneSpineEntryOption | undefined>
+
+type ListenersRegistry = Map<Symbol, Map<ComponentInternalInstance, ComponentListenersRegistry>>
+
+type RegisteredComponentsRegistry = Map<ComponentInternalInstance, Set<Symbol>>
 
 export class EventsBackboneSpine implements EventsBackboneSpineInterface {
-    private readonly spine: { [key: number]: EventsBackboneSpineEntry };
-    private readonly _internalComponentInstances: { [key: number]: any};
-    private readonly _componentInstancesHandlerOpts: { [componentUid: number]: { [eventName:string]: EventsBackboneSpineEntryOptions }};
+    private readonly evntsTree: EventsRegistry;
+    private readonly lstnrsRegistry: ListenersRegistry;
+    private readonly compsRegistry: RegisteredComponentsRegistry;
+    private readonly listenAllSymbol: Symbol = Symbol('*');
 
     constructor() {
-        this.spine = {};
-        this._internalComponentInstances = {};
-        this._componentInstancesHandlerOpts = {};
+        this.evntsTree = new Map();
+        this.lstnrsRegistry = new Map();
+        this.compsRegistry = new Map();
     }
 
-    checkKeys(obj: any): number {
-      return Object.keys(obj).length;
+    private _getComponentFromUid(uid: number): ComponentInternalInstance | undefined {
+        const compKeys = this.compsRegistry.keys();
+        for(const c of compKeys) {
+            if(c.uid === uid) {
+                return c;
+            }
+        }
+        return undefined;
     }
 
-    private _normalizeHandlerName(handlerName: string): string {
-        return handlerName.trim().replace(/\s+/g, "_");
-    }
-
-    private _callHandler(h: EventsBackboneEventHandler, be: EventsBackboneSpineEvent, handlerOptions?: EventsBackboneSpineEntryOption): any {
+    private _callHandler(h: EventsBackboneEventHandler, be: EventsBackboneSpineEvent, cs: Symbol, hOpts?: EventsBackboneSpineEntryOption): any {
         let once = null;
         be.stopPropagation = () => {
              be.propagationStopped = !be.global;
@@ -39,266 +54,406 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         be.once = () => {
             once = true;
         };
+        const oeName = this._rebuildEventNameFromSymbol(cs); // perchè ora con la gerarchia magari stiamo gestendo un evento di un livello diverso
+        const cName = be.handlerCallerComponentInstance?.type?.__name || be.handlerCallerComponentInstance?.type?.name;
         let retval;
         try {
             retval = h(be);
         } catch (e: any) {
-            console.error(`Error in handler function: ${h?.name} - event: ${be.eventName} - handler caller: ${be.handlerCallerComponentInstance?.type?.__name}`);
+            console.error(`Error in handler function: ${h?.name} - event: ${oeName} - handler caller: ${cName}`);
             console.error(e);
             return e;
         }
         // handle stopPropagation option if not handled earlier
-        if (Object.is(be.propagationStopped, null) && handlerOptions?.stopPropagation) {
+        if (Object.is(be.propagationStopped, null) && hOpts?.stopPropagation) {
             try {
-                 be.propagationStopped = typeof handlerOptions.stopPropagation === 'function' ?
-                    handlerOptions.stopPropagation(be) : handlerOptions.stopPropagation;
+                 be.propagationStopped = typeof hOpts.stopPropagation === 'function' ?
+                    hOpts.stopPropagation(be) : hOpts.stopPropagation;
             } catch (e: any) {
-                console.error(`Error in stopPropagation option for handler function: ${h?.name} - event: ${be.eventName} - handler caller: ${be.handlerCallerComponentInstance?.type?.__name}`);
+                console.error(`Error in stopPropagation option for handler function: ${h?.name} - event: ${oeName} - handler caller: ${cName}`);
                 console.error(e);
             }
         }
         // handle once option if not handled earlier
-        if (Object.is(once, null) && handlerOptions?.once) {
+        if (Object.is(once, null) && hOpts?.once) {
             try {
-                if (typeof handlerOptions.once === 'function' ? handlerOptions.once(be) : handlerOptions.once) {
-                    this.off(be.handlerCallerComponentInstance.uid, be.eventName, h);
+                if (typeof hOpts.once === 'function' ? hOpts.once(be) : hOpts.once) {
+                    this.off(be.handlerCallerComponentInstance.uid, oeName || "-", h);
                 }
             } catch (e: any) {
-                console.error(`Error in once option for handler function: ${h?.name} - event: ${be.eventName} - handler caller: ${be.handlerCallerComponentInstance?.type?.__name}`);
+                console.error(`Error in once option for handler function: ${h?.name} - event: ${oeName} - handler caller: ${cName}`);
                 console.error(e);
             }
         } else if(once) {
-            this.off(be.handlerCallerComponentInstance.uid, be.eventName, h);
+            this.off(be.handlerCallerComponentInstance.uid, oeName || "-", h);
         }
         return retval;
     }
 
     // manages handlers when global has been set to true when event was emitted
-    private async _internalEmitGlobalEvent(backboneEvent: EventsBackboneSpineEvent): Promise<void> {
+    private async _internalEmitGlobalEvent(bEvt: EventsBackboneSpineEvent): Promise<void> {
         let defs: Promise<any>[] = [];
-        for(const ci in this._internalComponentInstances) {
-            backboneEvent.handlerCallerComponentInstance = this._internalComponentInstances[ci];
-            if(this.spine[backboneEvent.handlerCallerComponentInstance.uid]?.registeredHandlers[backboneEvent.eventName]) {
-                for (const hand of this.spine[backboneEvent.handlerCallerComponentInstance.uid].registeredHandlers[backboneEvent.eventName]) {
-                    let returnedFromHandler = this._callHandler(
-                        hand,
-                        backboneEvent,
-                        this._getEventHandlerOpts(
-                            backboneEvent.handlerCallerComponentInstance.uid,
-                            backboneEvent.eventName,
-                            this._normalizeHandlerName(hand.name)
+        bEvt.branchSymbols.forEach((s: Symbol) => {
+            const compListeners = this.lstnrsRegistry.get(s);
+            if(compListeners) {
+                for(const cl of compListeners.entries()) {
+                    bEvt.handlerCallerComponentInstance = cl[0];
+                    const handlers = cl[1].entries();
+                    for (const h of handlers) {
+                        let returnedFromHandler = this._callHandler(
+                            h[0],
+                            bEvt,
+                            s,
+                            h[1],
                         )
-                    )
-                    if((!backboneEvent.eager) && returnedFromHandler instanceof Promise) {
-                        defs.push(returnedFromHandler);
+                        if((!bEvt.eager) && returnedFromHandler instanceof Promise) {
+                            defs.push(returnedFromHandler);
+                        }
                     }
                 }
             }
-        }
+        });
         await Promise.allSettled(defs);
     }
 
-    /*
-    * internal function that effectively propagates and calls handlers on the components chain
-    * if registered
-    * @backboneEvent information of events: original emitter component instance,
-    * component owner of the registered event handler, event name and event data
-    */
-    private async _internalEmitEvent(backboneEvent: EventsBackboneSpineEvent, callerComponentInstance?: ComponentInternalInstance): Promise<void> {
-        backboneEvent.handlerCallerComponentInstance = callerComponentInstance || backboneEvent.emitterComponentInstance;
-        if (this.spine[backboneEvent.handlerCallerComponentInstance.uid]?.registeredHandlers[backboneEvent.eventName]) {
+    private async _internalEmitEvent(bEvt: EventsBackboneSpineEvent, callerCInst?: ComponentInternalInstance): Promise<void> {
+        bEvt.handlerCallerComponentInstance = callerCInst || bEvt.emitterComponentInstance;
+        const compSymbs = this.compsRegistry.get(bEvt.handlerCallerComponentInstance);
+        if(compSymbs) {
             let defs: Promise<any>[] = [];
-            for (const hand of this.spine[backboneEvent.handlerCallerComponentInstance.uid].registeredHandlers[backboneEvent.eventName]) {
-                let returnedFromHandler = this._callHandler(
-                    hand,
-                    backboneEvent,
-                    this._getEventHandlerOpts(
-                        backboneEvent.handlerCallerComponentInstance.uid,
-                        backboneEvent.eventName,
-                        this._normalizeHandlerName(hand.name)
-                    )
-                );
-                if((!backboneEvent.eager) && returnedFromHandler instanceof Promise) {
-                    defs.push(returnedFromHandler);
+            bEvt.branchSymbols.forEach((s: Symbol) => {
+                if(compSymbs.has(s)) {
+                    const compListeners = this.lstnrsRegistry.get(s);
+                    if(compListeners) {
+                        const listeners = compListeners.get(bEvt.handlerCallerComponentInstance);
+                        if(listeners) {
+                            for (const hand of listeners.entries()) {
+                                let returnedFromHandler = this._callHandler(
+                                    hand[0],
+                                    bEvt,
+                                    s,
+                                    hand[1],
+                                );
+                                if((!bEvt.eager) && returnedFromHandler instanceof Promise) {
+                                    defs.push(returnedFromHandler);
+                                }
+                            }
+                        }
+                    }
                 }
-            }
+            })
             await Promise.allSettled(defs);
         }
-        if ((!backboneEvent.propagationStopped) && backboneEvent.handlerCallerComponentInstance.parent) {
-            await this._internalEmitEvent(backboneEvent, backboneEvent.handlerCallerComponentInstance.parent);
+        if ((!bEvt.propagationStopped) && bEvt.handlerCallerComponentInstance.parent) {
+            await this._internalEmitEvent(bEvt, bEvt.handlerCallerComponentInstance.parent);
         }
         return;
     }
 
-    /*
-    * function that effectively propagates an event through the entire branch
-    * starting from the component that calls this function.
-    * currentInstance is needed for 1) the uid to get event handlers registered for a specific event
-    * 2) get the parent and propagate
-    * @currentInstance: ComponentInternalInstance component internal instance
-    * @ev: string te event name
-    * @data?: any data to pass to handlers of the components chain
-    * @global?: if event has to be emitted to all components that registered at least a handler for that event
-    */
-    emitEvent(currentInstance: ComponentInternalInstance, ev: string, data?: any, configs?: { global?: boolean, eager?: boolean }): Promise<void> {
-        const backboneEv: EventsBackboneSpineEvent = {
-            emitterComponentInstance: currentInstance,
-            handlerCallerComponentInstance: currentInstance,
+    // get the reversed branch of event symbols a:b:c -> [c, b, a]
+    private _getBranchSymbols(en: string): Array<Symbol> {
+        const ens = en.split(":");
+        const a: Array<Symbol> = [this.listenAllSymbol];
+        let rn;
+        while(ens.length > 0) {
+            rn = rn ? rn + `:${ens.splice(0,1)[0]}` : `${ens.splice(0,1)[0]}`;
+            const evEntry = this._findEventEntry(rn);
+            if(!evEntry) {
+                break;
+            }
+            a.unshift(evEntry.symbol);
+        }
+        return a;
+    }
+
+    // main function to handle emitted event
+    emitEvent<T>(cInst: ComponentInternalInstance, ev: string, d?: T, configs?: { global?: boolean, eager?: boolean }): Promise<void> {
+        const mainSelf = this;
+        const bEvt: EventsBackboneSpineEvent = {
+            emitterComponentInstance: cInst,
+            handlerCallerComponentInstance: cInst,
             eventName: ev,
-            eventData: data,
+            branchSymbols: this._getBranchSymbols(ev),
+            eventData: d,
             global: configs?.global || false,
             propagationStopped: null,
             eager: Object.is(configs?.eager, undefined) || Object.is(configs?.eager, null) ? true : !!configs?.eager || false,
             // placeholders to avoid the optional parameters in type definition
             stopPropagation: () => {},
-            once: () => {}
-        }
-        if(configs?.global) {
-          return this._internalEmitGlobalEvent(backboneEv);
-        }
-        return this._internalEmitEvent(backboneEv);
-    }
-
-    // if existing, gets event handler options for specific component instance, event and handler
-    private _getEventHandlerOpts(uid: number, eventName: string, handlerName: string): EventsBackboneSpineEntryOption | undefined {
-      if(!this._componentInstancesHandlerOpts[uid]) {
-        return undefined;
-      }
-      const componentInstanceEventHandlersopts = this._componentInstancesHandlerOpts[uid];
-      if(!componentInstanceEventHandlersopts[eventName]) {
-        return undefined;
-      }
-      const handlerOpts = componentInstanceEventHandlersopts[eventName];
-      if(!handlerOpts[this._normalizeHandlerName(handlerName)]) {
-        return undefined;
-      }
-      return handlerOpts[this._normalizeHandlerName(handlerName)];
-    }
-
-    // function to consistently add handler options for specific event and component instance
-    private _addHandlerOptions(uid: number, eventName: string, handler: (backboneEvent: EventsBackboneSpineEvent) => void, options?: EventsBackboneSpineEntryOption): void {
-        if(!this._componentInstancesHandlerOpts[uid]) {
-          this._componentInstancesHandlerOpts[uid] = {};
-        }
-        if (!this._componentInstancesHandlerOpts[uid][eventName]) {
-            this._componentInstancesHandlerOpts[uid][eventName] = {};
-        }
-        if(options) {
-          const eventopts = this._componentInstancesHandlerOpts[uid][eventName];
-          eventopts[this._normalizeHandlerName(handler.name)] = options;
-        }
-    }
-
-    // remove options for a specific component instance, specific event and specific handler
-    private _removeHandlerOptions(uid: number, eventName: string, handler: (backboneEvent: EventsBackboneSpineEvent) => void): void {
-        if (!this._componentInstancesHandlerOpts[uid]) {
-            return;
-        }
-        // instance all events options
-        const instanceHandlerOpts = this._componentInstancesHandlerOpts[uid];
-        if (!instanceHandlerOpts[eventName]) {
-            return;
-        }
-        // instance specific event options
-        const eventOptions = instanceHandlerOpts[eventName];
-        if(!eventOptions[this._normalizeHandlerName(handler.name)]) {
-          return;
-        }
-        delete eventOptions[this._normalizeHandlerName(handler.name)];
-        // if no other handler options exist for specified event
-        // remove event key from the instance options
-        if(this.checkKeys(eventOptions) === 0) {
-          this._removeAllEventOptions(uid, eventName);
-        }
-    }
-
-    // remove options for a specific component instance and specific event
-    private _removeAllEventOptions(uid: number, eventName: string): void {
-        if (!this._componentInstancesHandlerOpts[uid]) {
-            return;
-        }
-        // instance all events options
-        const instanceHandlerOpts = this._componentInstancesHandlerOpts[uid];
-        if (!instanceHandlerOpts[eventName]) {
-            return;
-        }
-        delete instanceHandlerOpts[eventName];
-        if(this.checkKeys(instanceHandlerOpts) === 0) {
-          this._removeAllHandlerOptions(uid);
-        }
-    }
-
-    // removes all event handlers options for specified component instance
-    private _removeAllHandlerOptions(uid: number): void {
-      if (!this._componentInstancesHandlerOpts[uid]) {
-        return;
-      }
-      delete this._componentInstancesHandlerOpts[uid];
-    }
-
-    private _registerComponentInstance(ci: ComponentInternalInstance): void {
-      if(!this._internalComponentInstances[ci.uid]) {
-        this._internalComponentInstances[ci.uid] = ci;
-      }
-    }
-
-    private _unregisterComponentInstance(uid: number): void {
-      if(this._internalComponentInstances[uid]) {
-        delete this._internalComponentInstances[uid];
-      }
-    }
-
-    on(componentInstance: ComponentInternalInstance, ev: string, h: EventsBackboneEventHandler, opts?: EventsBackboneSpineEntryOption): void {
-      const uid = componentInstance.uid;
-      if (this.spine[uid]) {
-          if (!this.spine[uid].registeredHandlers[ev]) {
-              this.spine[uid].registeredHandlers[ev] = new Set();
-          }
-      } else {
-        this._registerComponentInstance(componentInstance);
-        const newHandlerSet = new Set() as Set<EventsBackboneEventHandler>;
-        newHandlerSet.add(h);
-        this.spine[uid] = {
-            uid: uid,
-            registeredHandlers: {
-                [ev]: newHandlerSet
+            once: () => {},
+            transformEvent: function (nn: string, nd?: any) {
+                if(this.global) {
+                    console.warn(`Cannot transform event ${this.eventName} into ${nn} as ${this.eventName} was emitted globally.`);
+                    return;
+                }
+                try {
+                    mainSelf._checkEventNameValidity(nn);
+                    this.eventName = nn;
+                    this.eventData = nd || this.eventData;
+                    this.branchSymbols = mainSelf._getBranchSymbols(nn);
+                } catch(e: any) {
+                    console.error(`Error trying to transform event ${this.eventName} into ${nn}`);
+                    console.error(e);
+                }
             }
         }
-      }
-      this._addHandlerOptions(uid, ev, h, opts)
+        bEvt.transformEvent = bEvt.transformEvent.bind(bEvt); // ensure this reference
+        if(configs?.global) {
+          return this._internalEmitGlobalEvent(bEvt);
+        }
+        return this._internalEmitEvent(bEvt);
+    }
+
+    private _addEventEntry(eName: string, subEntry?: EventsRegistryEntry): EventsRegistryEntry {
+        const newEntry: EventsRegistryEntry = { symbol: eName === '*' ? this.listenAllSymbol : Symbol(eName), parent: subEntry, children: new Map() };
+        if(subEntry) {
+            subEntry.children.set(eName, newEntry);
+            return newEntry;
+        }
+        this.evntsTree.set(eName, newEntry);
+        return newEntry;
+    }
+
+    private _checkEventEntryValidity(ee: EventsRegistryEntry): boolean {
+        const hasHandlers = !!this.lstnrsRegistry.get(ee.symbol);
+        if(hasHandlers || ee.children.size === 0) {
+            return hasHandlers;
+        }
+        const children = ee.children.entries();
+        for(const c of children) {
+            if(this._checkEventEntryValidity(c[1])) {
+                return true;
+            }
+        }
+        return hasHandlers;
+    }
+
+    private _removeEventEntry(toDelEntry: EventsRegistryEntry) {
+        if(!toDelEntry) {
+            return;
+        }
+        let parentEntry = toDelEntry.parent;
+        if(!parentEntry) {
+            this.evntsTree.delete(toDelEntry.symbol.description as string);
+            return;
+        }
+        parentEntry.children.delete(toDelEntry.symbol.description as string);
+        while(parentEntry) {
+            if(!this._checkEventEntryValidity(parentEntry)) {
+                const parentEntryParentTemp: EventsRegistryEntry | undefined = parentEntry.parent;
+                if(parentEntryParentTemp) {
+                    parentEntry.parent = undefined;
+                    parentEntryParentTemp.children.delete(parentEntry.symbol.description as string);
+                } else {
+                    this.evntsTree.delete(parentEntry.symbol.description as string)
+                }
+                parentEntry = parentEntryParentTemp;
+            } else {
+                break;
+            }
+        }
+    }
+
+    private _rebuildEventNameFromSymbol(s: Symbol) {
+        const foundEventEntry = this._findEventEntryFromNodeName(s.description as string);
+        if(!foundEventEntry) {
+            return undefined;
+        }
+        return this._rebuildEventNameFromEventEntry(foundEventEntry);
+    }
+
+    private _rebuildEventNameFromEventEntry(ee: EventsRegistryEntry) {
+        let name = ee.symbol.description;
+        while (ee.parent) {
+            name = `${ee.parent.symbol.description}:` + name;
+            ee = ee.parent
+        }
+        return name;
+    }
+
+    private _findEventEntryFromNodeName(nn: string, subee?: EventsRegistryEntry): EventsRegistryEntry | undefined{
+        if(subee) {
+            for(const subc of subee.children.entries()) {
+                if(subc[0] === nn) {
+                    return subc[1];
+                }
+                const foundChild = this._findEventEntryFromNodeName(nn, subc[1]);
+                if(foundChild) {
+                    return foundChild;
+                }
+            }
+            return undefined;
+        }
+        for(const ee of this.evntsTree.entries()) {
+            if(ee[0] === nn) {
+                return ee[1];
+            }
+            const foundChild = this._findEventEntryFromNodeName(nn, ee[1])
+            if(foundChild) {
+                return foundChild;
+            }
+        }
+        return undefined
+    }
+
+    private _getEventEntry(gs: Array<string>, ee?: EventsRegistryEntry, update?: boolean): EventsRegistryEntry | undefined {
+        const currentNodeName = gs.splice(0, 1)[0];
+        let currentEntry = ee ? ee.children.get(currentNodeName) : this.evntsTree.get(currentNodeName);
+        if(!currentEntry) {
+            if(!update) {
+                return currentEntry;
+            }
+            currentEntry = this._addEventEntry(currentNodeName, ee);
+        }
+        if(gs.length === 0) {
+            return currentEntry;
+        }
+        return this._getEventEntry(gs, currentEntry, update);
+    }
+
+    private _findEventEntry(eName: string, update?: boolean): EventsRegistryEntry | undefined {
+        return this._getEventEntry(eName.split(":"), undefined, update);
+    }
+
+    private _checkEventNameValidity(en: string) {
+        const reg = /(?<listenallerror>.*\*.+)|(?<consequentcolons>:{2,})|(?<spacescolons>:\s+:)|(?<finalcolon>^.*:$)|(?<startingcolon>^:.*$)/gi;
+        const matches = reg.exec(en);
+        if(matches?.groups?.listenallerror) {
+            throw new Error(`${en} - Invalid event name. Listen All event listeners must be registered with a lone '*'.`);
+        }
+        if(matches?.groups?.consequentcolons) {
+            throw new Error(`${en} - Invalid event name. The name cannot have consequent colons.`);
+        }
+        if(matches?.groups?.finalcolon) {
+            throw new Error(`${en} - Invalid event name. The name cannot end with a colon.`);
+        }
+        if(matches?.groups?.startingcolon) {
+            throw new Error(`${en} - Invalid event name. The name cannot start with a colon.`);
+        }
+        if(matches?.groups?.spacescolons) {
+            throw new Error(`${en} - Invalid event name. The name cannot have two colons separated by spaces.`);
+        }
+    }
+
+    // da chiamare nell' ON
+    private _addListener(c: ComponentInternalInstance, eName: string, h: EventsBackboneEventHandler, opts?: EventsBackboneSpineEntryOption) {
+        const testEntry = this._findEventEntry(eName, true);
+        // testEntry ci sarà sicuramente anche se va controllato
+        if(testEntry) {
+            this._addListenerEntry(c, testEntry.symbol, h, opts);
+            this._addCompEntrySymbol(c, testEntry.symbol);
+        }
+    }
+
+    private _addListenerEntry(c: ComponentInternalInstance, s: Symbol, h: EventsBackboneEventHandler, opts?: EventsBackboneSpineEntryOption) {
+        const listenersEntries = this.lstnrsRegistry.get(s);
+        if(!listenersEntries) {
+            this.lstnrsRegistry.set(s, new Map([[c, new Map([[h, opts]])]]));
+        } else {
+            listenersEntries.set(c, new Map)
+            const cListeners = listenersEntries.get(c);
+            if(!cListeners) {
+                listenersEntries.set(c, new Map([[h,opts]]));
+            } else {
+                cListeners.set(h, opts);
+            }
+        }
+    }
+
+    private _addCompEntrySymbol(c: ComponentInternalInstance, s: Symbol) {
+        if(!this.compsRegistry.has(c)) {
+            this.compsRegistry.set(c, new Set([s]));
+            return;
+        }
+        this.compsRegistry.get(c)?.add(s);
+    }
+
+    // remove functions
+
+    private _removeCompEntry(c: ComponentInternalInstance) {
+        this.compsRegistry.delete(c);
+    }
+
+    private _removeCompEntrySymbol(c: ComponentInternalInstance, s: Symbol) {
+        const cSymbols = this.compsRegistry.get(c);
+        if(!cSymbols) {
+            return;
+        }
+        cSymbols.delete(s);
+        if(cSymbols.size === 0) {
+            this._removeCompEntry(c);
+        }
+    }
+
+    private _removeListenerEntry(c: ComponentInternalInstance, s: Symbol, h: EventsBackboneEventHandler) {
+        const listenersEntries = this.lstnrsRegistry.get(s);
+        if(!listenersEntries) {
+            return;
+        }
+        const cListeners = listenersEntries.get(c);
+        if(!cListeners) {
+            return;
+        }
+        cListeners.delete(h);
+        if(cListeners.size === 0) {
+            listenersEntries.delete(c);
+            this._removeCompEntrySymbol(c, s);
+        }
+    }
+
+    // da chiamare nell' OFF
+    private _removeListener(c: ComponentInternalInstance, eName: string, h: EventsBackboneEventHandler) {
+        const testEntry = this._findEventEntry(eName);
+        if(testEntry) {
+            this._removeListenerEntry(c, testEntry.symbol, h);
+            const listenersEntries = this.lstnrsRegistry.get(testEntry.symbol);
+            if(listenersEntries && listenersEntries.size === 0) {
+                this.lstnrsRegistry.delete(testEntry.symbol);
+            }
+            if(!this._checkEventEntryValidity(testEntry)) {
+                this._removeEventEntry(testEntry);
+            }
+        }
+    }
+
+    on(c: ComponentInternalInstance, ev: string, h: EventsBackboneEventHandler, opts?: EventsBackboneSpineEntryOption): void {
+        try {
+            ev = ev.trim()
+            if(ev.length === 0) {
+                throw new Error("Event name can not be an empty string");
+            }
+            this._checkEventNameValidity(ev);
+            this._addListener(c, ev, h, opts);
+        } catch(e: any) {
+            console.error(e);
+        }
     }
 
     // removes specific component instance handler for specific event
     // if no handler is passed to the function, it removes all handlers for specific events
     off(uid: number, ev: string, h?: EventsBackboneEventHandler): void {
-      if (this.spine[uid]) {
-        if(!h) {
-          if(!this.spine[uid].registeredHandlers[ev]) {
-            return;
-          }
-          delete this.spine[uid].registeredHandlers[ev];
-          this._removeAllEventOptions(uid, ev);
-        } else {
-          if (this.spine[uid].registeredHandlers[ev] && this.spine[uid].registeredHandlers[ev].has(h)) {
-            this.spine[uid].registeredHandlers[ev].delete(h);
-            if(this.spine[uid].registeredHandlers[ev].size === 0) {
-              delete this.spine[uid].registeredHandlers[ev];
-            }
-            this._removeHandlerOptions(uid, ev, h);
-          }
+        const comp = this._getComponentFromUid(uid);
+        if(comp && h) {
+            this._removeListener(comp, ev, h);
+        } else if(comp && !h) {
+            this.offAll(uid);
         }
-        if(this.checkKeys(this.spine[uid].registeredHandlers) === 0) {
-          this.offAll(uid);
-        }
-      }
     }
 
     offAll(uid: number): void {
-      if (this.spine[uid]) {
-        delete this.spine[uid];
-        this._removeAllHandlerOptions(uid);
-        this._unregisterComponentInstance(uid);
-      }
+        const comp = this._getComponentFromUid(uid);
+        if(comp) {
+            const evSyms = this.compsRegistry.get(comp);
+            if(evSyms) {
+                evSyms.forEach((es: Symbol) => {
+                    const componentHandlers = this.lstnrsRegistry.get(es);
+                    if(componentHandlers && componentHandlers.has(comp)) {
+                        componentHandlers.delete(comp);
+                    }
+                })
+                this.compsRegistry.delete(comp);
+            }
+        }
     }
 }
 
@@ -309,30 +464,37 @@ const EventsBackboneFactory = function(ctor: EventsBackboneSpineConstructor): Ev
 export const BB: EventsBackboneSpine = EventsBackboneFactory(EventsBackboneSpine);
 
 export const EventsBackBoneDirective: ObjectDirective<any, EventsBackboneDirectiveParams> = {
-    mounted(el: HTMLElement, binding: any, vnode: any) {
-        for (const eventKey in binding.value) {
-            if(!Array.isArray(binding.value[eventKey])) {
-                console.warn(`${vnode?.ctx?.type.__name} - eventKey value for ${eventKey} must be an array`);
-            } else {
-                for (const handlerParams of binding.value[eventKey]) {
-                    BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
+    mounted(el: HTMLElement, binding: DirectiveBinding, vnode: any) {
+        const comp = binding.instance?.$;
+        if(comp) {
+            for (const eventKey in binding.value) {
+                if(!Array.isArray(binding.value[eventKey])) {
+                    console.warn(`${comp.type.__name || comp.type.name} - eventKey value for ${eventKey} must be an array`);
+                } else {
+                    for (const handlerParams of binding.value[eventKey]) {
+                        BB.on(comp, eventKey, handlerParams.handler, handlerParams.options);
+                    }
                 }
             }
         }
     },
     beforeUpdate(el: HTMLElement, binding: DirectiveBinding, vnode: any, prevVnode: any) {
-      BB.offAll(prevVnode.ctx.uid);
-      for (const eventKey in binding.value) {
-          if(!Array.isArray(binding.value[eventKey])) {
-              console.warn(`${vnode?.ctx?.type.__name} - eventKey value for ${eventKey} must be an array`);
-          } else {
-              for (const handlerParams of binding.value[eventKey]) {
-                  BB.on(vnode.ctx, eventKey, handlerParams.handler, handlerParams.options);
-              }
-          }
-      }
+        const comp = binding.instance?.$;
+        comp ? BB.offAll(comp.uid) : undefined;
+        if(comp) {
+            for (const eventKey in binding.value) {
+                if(!Array.isArray(binding.value[eventKey])) {
+                    console.warn(`${comp.type.__name || comp.type.name} - eventKey value for ${eventKey} must be an array`);
+                } else {
+                    for (const handlerParams of binding.value[eventKey]) {
+                        BB.on(comp, eventKey, handlerParams.handler, handlerParams.options);
+                    }
+                }
+            }
+        }
     },
     beforeUnmount(el: HTMLElement, binding: DirectiveBinding, vnode: any) {
-        BB.offAll(vnode.ctx.uid);
+        const comp = binding.instance?.$;
+        comp ? BB.offAll(comp.uid) : undefined;
     }
 }
