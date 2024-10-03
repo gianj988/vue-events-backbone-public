@@ -1,29 +1,6 @@
-### **1.1.1 CHANGES (backwards compatible)**: 
-- now the **EventsBackboneSpineEvent** parameter passed to the handler function, will have 
-**stopPropagation** and **once** functions that can be called directly inside the handler (for a more natural native events handling).
-These two functions will directly set to true the respective value, overriding the relative handler option.
-However, stopPropagation will still depend on the global modifier, if the event emitted is global, stopPropagation will not 
-be set to true even if the handler inside calls ".stopPropagation()"
-Old handler options system is still working as always.
+#### KNOWN 1.2.0 BUGS
 
-- Better directive unexpected value type explanation.
-
-### **1.2.0 CHANGES {backwards compatible}**:
-- type EventsBackboneEmitter (the emitter functions type) now takes 3 optional parameters:
-    1) data: the data to pass with the event
-    2) global: if the emitted event must be considered global
-    3) eager: (true by default if nothing is passed) if set EXPLICITLY to false, the internal handlers caller function
-    awaits for handlers of a specific component to complete their execution (in case of async handlers) before stepping forward to handlers of the parent component.
-    This also implies that the promise returned by the invoked emitter function will become fulfilled accordingly to the handlers execution.
-
-- propagationStopped now is an information replicated on the EventsBackboneSpineEvent object 
-(for when there are more handlers registered for the same event and component and it may be useful to have this information)
-
-- small internal refactor to allow eager behaviour and preparing for future developments
-
-#### KNOWN BUGS
-
-- if an imported component is used inside the template section of a SFC and it has the backbone directive to register handlers, 
+- if an imported component is used inside the template section of an SFC, and it has the backbone directive to register handlers, 
 the registered UID in the EventsBackbone is that of the imported component instead of the actual component of the SFC file.
 Temporary solution: wrap the imported component inside a standard html tag and put the directive on it.
 
@@ -42,10 +19,15 @@ Temporary solution: wrap the imported component inside a standard html tag and p
 - Added hierarchical meaning to the event naming (see documentation)
 - Fixed the bug regarding the backbone directive when used in imported component tags
 
+### **1.3.1 CHANGES {backwards compatible}**:
+
+- added a defineBackboneEmits function (NOT MACRO) that returns an emitter function, just like Vue defineEmits macro. (see documentation below)
+- further optimizations in backbone class
+
 ### UPCOMING CHANGES
 
 - possibility to link 2 components directly through a special separate bus
-- register listeners for "x:y" event that will be triggered ONLY by this specific event (and not other "x:y:whatever" events) 
+- register listeners for "x:y" event that will be triggered ONLY by this specific event (and not other "x:y:whatever" events)
 - I'll try to reduce the package size
 
 # EventsBackbone
@@ -55,7 +37,7 @@ is Dependency Injection with Provide/Inject to make component functions and prop
 its children.
 
 This plugin is a complete Event Bus that simulates DOM events propagation but through components tree.
-it features:
+It features:
 
 - asynchronous execution of handlers to avoid clogging main thread
 - no Vue 3 events handling modification
@@ -77,8 +59,9 @@ The package exports:
 
 - **the plugin installer to install with app.use() (default)**
 - **the plugin directive to register on the app with app.directive()**, that will be used to register event listeners on those components that need to
-- **createEventsBackboneEmitter**, a Symbol that it's meant to be used for injecting the **EventsBackboneEmit** function. This
+- **createEventsBackboneEmitter** a Symbol that it's meant to be used for injecting the **EventsBackboneEmit** function. This
 must be called in a component lifecycle hook as it uses getCurrentInstance() internally.
+- **defineBackboneEmits** function to define emitters more easily
 - **useBackbone** function that will return the internal EventsBackbone instance. 
 This is for a more precise control of the mechanism and for those who like adventure.
 
@@ -91,7 +74,7 @@ This is for a more precise control of the mechanism and for those who like adven
 
 [Emitters Functions Creation](#3-emitter-functions-creation-and-emit-custom-events-with-data-from-a-child-component)
 
-[The Emitter Generator Function](#31-the-eventsbackboneemittergenerator-function)
+[The Emitter Generator Function](#3-emitter-functions-creation-and-emit-custom-events-with-data-from-a-child-component)
 
 [New Event Naming Semantic](#4-new-events-naming-semantic-and-listen-all-events-keyword)
 
@@ -112,7 +95,7 @@ app.directive("nameOfYourChoice", EventsBackBoneDirective);
 For more info on how to install a directive in your vue app please refer to **[the Vue3 doc on custom directive](https://vuejs.org/guide/reusability/custom-directives)**
 It is advised to install this directive globally in order to allow its use on all components in your project.
 
-Take note of nameOfYourChoice because it will becaome the actual directive name to use with "v-".
+Take note of nameOfYourChoice because it will become the actual directive name to use with "v-".
 
 ### 2. REGISTER EVENT LISTENERS USING THE DIRECTIVE
 
@@ -134,6 +117,60 @@ The directive handles the on/off of registered event listeners, according to the
 It is advised to place the directive on the root tag of the component, although it should work anyway
 
 ### 3. EMITTER FUNCTIONS CREATION AND EMIT CUSTOM EVENTS WITH DATA FROM A CHILD COMPONENT
+
+#### 3.1 EMITTERS CREATION WITH THE NEW defineBackboneEmits FUNCTION
+
+To simplify further the process of generating emitters (and to stick more to "the Vue3 way"), a **defineBackboneEmits**
+function has been introduced.
+The usage is similar to Vue native macro defineEmits, with the difference that **defineBackboneEmits is not a macro**. 
+Infact internally it still requires access to the current component instance and, because of that, it must be called inside one of component
+lifecycle hooks to create emitters correctly.
+
+**defineBackboneEmits** accepts an optional parameter of type "string | Array<string>".
+If called without parameters, it will return a general emitter function that can emit any event name you want.
+If called with a string or an array of strings, it will return an emitter function that can emit only those defined events.
+
+To define emitters with this function you have to:
+
+1) import the function along with its returned type, into the script section in an SFC file (import in App.vue if you want to provide it globally)
+and define a variable (or a ref, if you prefer) in which you will store the emitter function: 
+```
+import {
+  defineBackboneEmits, type EventsBackboneEmitFn
+} from 'vue-events-backbone'
+
+let backboneEmitter: EventsBackboneEmitFn;
+```
+
+2) inside one of the component lifecycle hooks:
+```
+onMounted(() => {
+  backboneEmitter = defineBackboneEmits(["foo", "bar", "baz:whatev"]);
+})
+```
+
+#### Usage of Emitter function created with **defineBackboneEmits**
+
+The usage of backboneEmitter it's a bit different from emitters created with **createEventsBackboneEmitter INJECTION KEY**.
+It's more similar to emit = defineEmits() usage.
+So in the previous example, as we passed `["foo", "bar", "baz:whatev"]` array, backboneEmitter can emit only those events.
+```
+backboneEmitter("foo", optionalDataToSend, ifGlobal, ifNotEager) // emits a foo event
+backboneEmitter("baz:whatev", optionalDataToSend, ifGlobal, ifNotEager) // emits a baz:whatev event
+```
+
+If we call defineBackboneEmits with no arguments (```backboneEmitter = defineBackboneEmits();```)
+we can emit anything we want with no limitations:
+```
+backboneEmitter("whatever", optionalDataToSend, ifGlobal, ifNotEager) // emits a whatever event
+backboneEmitter("bar:foo", optionalDataToSend, ifGlobal, ifNotEager) // emits a bar:foo event
+```
+
+Apart from these aspects, internally it works as previous version, and it will still return a Promise<void> to signal
+when the handlers caller function will finish its job.
+
+
+#### 3.2 EMITTERS CREATION FROM createEventsBackboneEmitter INJECTION KEY (LEGACY, will be removed from version 2.0.0)
 
 In order to emit an event from a component to its parents (or globally):
 1) import the injection key for the createEmitter function and inject the EventsBackboneEmitterGenerator function: 
@@ -160,7 +197,7 @@ onMounted(() => {
 yourEmitterRef.value(yourCustomEventData?, global?: true | false(default), eager?: true(default) | false);
 ```
 
-#### Emitter Function Usage
+#### 3.2.1 Emitter Function Usage (LEGACY, will be removed from version 2.0.0)
 
 Every emitter function accepts three arguments: 
 - the event data you want to pass 
@@ -173,7 +210,7 @@ The emitter function, when called, returns a Promise<void> when the handler call
 remember to check if yourEmitterRef has the function, because, in case of problems installing the plugin,
 **yourEmitterGeneratorFnVariable** will be undefined and consequently "**yourEmitterRef.value**" will also be undefined.
 
-### 3.1 THE EventsBackboneEmitterGenerator FUNCTION
+#### 3.2.2 THE EventsBackboneEmitterGenerator FUNCTION (LEGACY, will be removed from version 2.0.0)
 
 The EventsBackboneEmitterGenerator function stored in "yourEmitterGeneratorFnVariable" takes one parameter of type: string | Array<string>
 1) if a single string is passed, **yourEmitterRef.value** will store a single emitter function to call
@@ -193,6 +230,7 @@ onMounted(() => {
 // yourEmitterRef2.value(yourCustomEventData, ifGlobal, ifNotEager)
 ```
 
+
 ### 4. NEW EVENTS NAMING SEMANTIC AND LISTEN ALL EVENTS KEYWORD
 
 #### LISTEN ALL
@@ -209,7 +247,7 @@ In this way YourComponent will listen for all events emitted from one of its chi
 
 #### NEW EVENTS NAME SEMANTIC
 
-I decided to give to developers the possibility to define an "Event Hierarchy" directily with the event name.
+I decided to give to developers the possibility to define an "Event Hierarchy" directly with the event name.
 
 More specifically, if I register an **x:y:z** event with the directive (see point 2) I'm defining a "tree-branch" with "x" being the root, "y" being a node and "z" being the leaf.
 
@@ -231,6 +269,7 @@ an event with "x:y" parents, from bottom to top. So "x:y" handlers will be execu
 Considered the new event name meaning, there are some rules to follow when choosing the event name to listen for: 
 - the listen all "\*" must be alone. So "*:whatever" is forbidden.
 - the name cannot have trailing ":". ":whatever", "whatever:" are forbidden
+- spaces in event names are forbidden.
 - consequent colons or colons separated by spaces are forbidden. So no "what::ever" or "what:  :ever".
 
 In each of these cases, the directive will throw an error and it will not register that specific event listener.
@@ -240,19 +279,6 @@ All valid names will still be registered
 
 The event emitted will be described by a "**EventsBackboneSpineEvent**" object that will be passed as parameter of each
 event handler to call. This object will contain:
-
-`emitterComponentInstance: ComponentInternalInstance
-    handlerCallerComponentInstance: ComponentInternalInstance
-    eventName: string
-    branchSymbols: Array<Symbol>
-    eventData?: any
-    global?: boolean
-    propagationStopped?: boolean | null
-    eager?: boolean | null
-    stopPropagation: (() => void)
-    once: (() => void)
-    transformEvent: ((newName: string, newData?: any) => void)`
-
 
 1) **emitterComponentInstance**: the instance of the component that emitted the event 
 2) **handlerCallerComponentInstance**: the instance of the component currently handling the event

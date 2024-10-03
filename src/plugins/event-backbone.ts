@@ -29,6 +29,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     private readonly lstnrsRegistry: ListenersRegistry;
     private readonly compsRegistry: RegisteredComponentsRegistry;
     private readonly listenAllSymbol: Symbol = Symbol('*');
+    private readonly emptyMap: Map<any, any> = new Map();
 
     constructor() {
         this.evntsTree = new Map();
@@ -37,10 +38,9 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     }
 
     private _getComponentFromUid(uid: number): ComponentInternalInstance | undefined {
-        const compKeys = this.compsRegistry.keys();
-        for(const c of compKeys) {
-            if(c.uid === uid) {
-                return c;
+        for(const c of this.compsRegistry.entries()) {
+            if(c[0].uid === uid) {
+                return c[0];
             }
         }
         return undefined;
@@ -90,16 +90,14 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         return retval;
     }
 
-    // manages handlers when global has been set to true when event was emitted
-    private async _internalEmitGlobalEvent(bEvt: EventsBackboneSpineEvent): Promise<void> {
+    private async _callHandlers(bEvt: EventsBackboneSpineEvent, comp?: ComponentInternalInstance): Promise<void>{
         let defs: Promise<any>[] = [];
         bEvt.branchSymbols.forEach((s: Symbol) => {
-            const compListeners = this.lstnrsRegistry.get(s);
-            if(compListeners) {
-                for(const cl of compListeners.entries()) {
-                    bEvt.handlerCallerComponentInstance = cl[0];
-                    const handlers = cl[1].entries();
-                    for (const h of handlers) {
+            for(const cl of (this.lstnrsRegistry.get(s) || this.emptyMap).entries()) {
+                let cInstance = comp ? (comp.uid === cl[0].uid ? comp : undefined) : cl[0];
+                if(cInstance) {
+                    bEvt.handlerCallerComponentInstance = cInstance;
+                    for (const h of cl[1].entries()) {
                         let returnedFromHandler = this._callHandler(
                             h[0],
                             bEvt,
@@ -114,35 +112,13 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
             }
         });
         await Promise.allSettled(defs);
+        return;
     }
 
     private async _internalEmitEvent(bEvt: EventsBackboneSpineEvent, callerCInst?: ComponentInternalInstance): Promise<void> {
         bEvt.handlerCallerComponentInstance = callerCInst || bEvt.emitterComponentInstance;
-        const compSymbs = this.compsRegistry.get(bEvt.handlerCallerComponentInstance);
-        if(compSymbs) {
-            let defs: Promise<any>[] = [];
-            bEvt.branchSymbols.forEach((s: Symbol) => {
-                if(compSymbs.has(s)) {
-                    const compListeners = this.lstnrsRegistry.get(s);
-                    if(compListeners) {
-                        const listeners = compListeners.get(bEvt.handlerCallerComponentInstance);
-                        if(listeners) {
-                            for (const hand of listeners.entries()) {
-                                let returnedFromHandler = this._callHandler(
-                                    hand[0],
-                                    bEvt,
-                                    s,
-                                    hand[1],
-                                );
-                                if((!bEvt.eager) && returnedFromHandler instanceof Promise) {
-                                    defs.push(returnedFromHandler);
-                                }
-                            }
-                        }
-                    }
-                }
-            })
-            await Promise.allSettled(defs);
+        if(this.compsRegistry.has(bEvt.handlerCallerComponentInstance)) {
+            await this._callHandlers(bEvt, bEvt.handlerCallerComponentInstance);
         }
         if ((!bEvt.propagationStopped) && bEvt.handlerCallerComponentInstance.parent) {
             await this._internalEmitEvent(bEvt, bEvt.handlerCallerComponentInstance.parent);
@@ -160,8 +136,9 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
             const evEntry = this._findEventEntry(rn);
             if(!evEntry) {
                 break;
+            } else {
+                a.unshift(evEntry.symbol);
             }
-            a.unshift(evEntry.symbol);
         }
         return a;
     }
@@ -199,19 +176,16 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         }
         bEvt.transformEvent = bEvt.transformEvent.bind(bEvt); // ensure this reference
         if(configs?.global) {
-          return this._internalEmitGlobalEvent(bEvt);
+          return this._callHandlers(bEvt);
         }
         return this._internalEmitEvent(bEvt);
     }
 
     private _addEventEntry(eName: string, subEntry?: EventsRegistryEntry): EventsRegistryEntry {
-        const newEntry: EventsRegistryEntry = { symbol: eName === '*' ? this.listenAllSymbol : Symbol(eName), parent: subEntry, children: new Map() };
-        if(subEntry) {
-            subEntry.children.set(eName, newEntry);
-            return newEntry;
+        if(subEntry && eName !== '*') {
+            return subEntry.children.set(eName, { symbol: Symbol(eName), parent: subEntry, children: new Map() }).get(eName) as EventsRegistryEntry;
         }
-        this.evntsTree.set(eName, newEntry);
-        return newEntry;
+        return this.evntsTree.set(eName, { symbol: eName === '*' ? this.listenAllSymbol : Symbol(eName), parent: subEntry, children: new Map() }).get(eName) as EventsRegistryEntry;
     }
 
     private _checkEventEntryValidity(ee: EventsRegistryEntry): boolean {
@@ -219,8 +193,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         if(hasHandlers || ee.children.size === 0) {
             return hasHandlers;
         }
-        const children = ee.children.entries();
-        for(const c of children) {
+        for(const c of ee.children.entries()) {
             if(this._checkEventEntryValidity(c[1])) {
                 return true;
             }
@@ -316,7 +289,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     }
 
     private _checkEventNameValidity(en: string) {
-        const reg = /(?<listenallerror>.*\*.+)|(?<consequentcolons>:{2,})|(?<spacescolons>:\s+:)|(?<finalcolon>^.*:$)|(?<startingcolon>^:.*$)/gi;
+        const reg = /(?<listenallerror>.*\*.+)|(?<consequentcolons>:{2,})|(?<spacescolons>:\s+:)|(?<finalcolon>^.*:$)|(?<startingcolon>^:.*$)|(?<spacesfound>^[a-zA-Z:]*\s+[a-zA-Z:]*$)/gi;
         const matches = reg.exec(en);
         if(matches?.groups?.listenallerror) {
             throw new Error(`${en} - Invalid event name. Listen All event listeners must be registered with a lone '*'.`);
@@ -333,12 +306,14 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         if(matches?.groups?.spacescolons) {
             throw new Error(`${en} - Invalid event name. The name cannot have two colons separated by spaces.`);
         }
+        if(matches?.groups?.spacesfound) {
+            throw new Error(`${en} - Invalid event name. The name cannot have spaces inside.`);
+        }
     }
 
     // da chiamare nell' ON
     private _addListener(c: ComponentInternalInstance, eName: string, h: EventsBackboneEventHandler, opts?: EventsBackboneSpineEntryOption) {
         const testEntry = this._findEventEntry(eName, true);
-        // testEntry ci sarà sicuramente anche se va controllato
         if(testEntry) {
             this._addListenerEntry(c, testEntry.symbol, h, opts);
             this._addCompEntrySymbol(c, testEntry.symbol);

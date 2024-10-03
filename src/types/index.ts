@@ -61,6 +61,8 @@ export type EventsBackboneDirectiveParam = { handler: EventsBackboneEventHandler
 
 export type EventsBackboneDirectiveParams = { [key:string]: Array<EventsBackboneDirectiveParam> };
 
+export type EventsBackboneEmitFn = ((ev: string, data?: any, global?: boolean, eager?: boolean) => Promise<void>);
+
 export type EventsBackboneEmitter = (<T>(data?: T, global?: boolean, eager?: boolean) => Promise<void>);
 
 export type EventsBackboneEmitters = { [evname:string]: EventsBackboneEmitter};
