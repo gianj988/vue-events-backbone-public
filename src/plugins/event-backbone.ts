@@ -47,15 +47,11 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     }
 
     private _callHandler(h: EventsBackboneEventHandler, be: EventsBackboneSpineEvent, cs: Symbol, hOpts?: EventsBackboneSpineEntryOption): any {
-        let once = null;
-        be.stopPropagation = () => {
-             be.propagationStopped = !be.global;
-        };
-        be.once = () => {
-            once = true;
-        };
-        const oeName = this._rebuildEventNameFromSymbol(cs); // perchè ora con la gerarchia magari stiamo gestendo un evento di un livello diverso
+        const oeName = this._rebuildEventNameFromSymbol(cs);
         const cName = be.handlerCallerComponentInstance?.type?.__name || be.handlerCallerComponentInstance?.type?.name;
+        be.once = () => {
+            this.off(be.handlerCallerComponentInstance.uid, oeName || "-", h);
+        };
         let retval;
         try {
             retval = h(be);
@@ -75,7 +71,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
             }
         }
         // handle once option if not handled earlier
-        if (Object.is(once, null) && hOpts?.once) {
+        if (hOpts?.once) {
             try {
                 if (typeof hOpts.once === 'function' ? hOpts.once(be) : hOpts.once) {
                     this.off(be.handlerCallerComponentInstance.uid, oeName || "-", h);
@@ -84,17 +80,15 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
                 console.error(`Error in once option for handler function: ${h?.name} - event: ${oeName} - handler caller: ${cName}`);
                 console.error(e);
             }
-        } else if(once) {
-            this.off(be.handlerCallerComponentInstance.uid, oeName || "-", h);
         }
         return retval;
     }
 
     private async _callHandlers(bEvt: EventsBackboneSpineEvent, comp?: ComponentInternalInstance): Promise<void>{
-        let defs: Promise<any>[] = [];
+        const defs: Promise<any>[] = [];
         bEvt.branchSymbols.forEach((s: Symbol) => {
             for(const cl of (this.lstnrsRegistry.get(s) || this.emptyMap).entries()) {
-                let cInstance = comp ? (comp.uid === cl[0].uid ? comp : undefined) : cl[0];
+                const cInstance = comp ? (comp.uid === cl[0].uid ? comp : undefined) : cl[0];
                 if(cInstance) {
                     bEvt.handlerCallerComponentInstance = cInstance;
                     for (const h of cl[1].entries()) {
@@ -133,7 +127,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         let rn;
         while(ens.length > 0) {
             rn = rn ? rn + `:${ens.splice(0,1)[0]}` : `${ens.splice(0,1)[0]}`;
-            const evEntry = this._findEventEntry(rn);
+            const evEntry = this._getEventEntry(rn.split(":"));
             if(!evEntry) {
                 break;
             } else {
@@ -156,7 +150,13 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
             propagationStopped: null,
             eager: Object.is(configs?.eager, undefined) || Object.is(configs?.eager, null) ? true : !!configs?.eager || false,
             // placeholders to avoid the optional parameters in type definition
-            stopPropagation: () => {},
+            stopPropagation: function () {
+                if(!this.global) {
+                    this.propagationStopped = !this.global;
+                    return;
+                }
+                console.warn(`${this.eventName} - can not stop the propagation of an event emitted global.`);
+            },
             once: () => {},
             transformEvent: function (nn: string, nd?: any) {
                 if(this.global) {
@@ -202,14 +202,12 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     }
 
     private _removeEventEntry(toDelEntry: EventsRegistryEntry) {
-        if(!toDelEntry) {
-            return;
-        }
         let parentEntry = toDelEntry.parent;
         if(!parentEntry) {
             this.evntsTree.delete(toDelEntry.symbol.description as string);
             return;
         }
+        toDelEntry.parent = undefined;
         parentEntry.children.delete(toDelEntry.symbol.description as string);
         while(parentEntry) {
             if(!this._checkEventEntryValidity(parentEntry)) {
@@ -229,10 +227,9 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
 
     private _rebuildEventNameFromSymbol(s: Symbol) {
         const foundEventEntry = this._findEventEntryFromNodeName(s.description as string);
-        if(!foundEventEntry) {
-            return undefined;
+        if(foundEventEntry) {
+            return this._rebuildEventNameFromEventEntry(foundEventEntry);
         }
-        return this._rebuildEventNameFromEventEntry(foundEventEntry);
     }
 
     private _rebuildEventNameFromEventEntry(ee: EventsRegistryEntry) {
@@ -266,7 +263,6 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
                 return foundChild;
             }
         }
-        return undefined
     }
 
     private _getEventEntry(gs: Array<string>, ee?: EventsRegistryEntry, update?: boolean): EventsRegistryEntry | undefined {
@@ -284,9 +280,9 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         return this._getEventEntry(gs, currentEntry, update);
     }
 
-    private _findEventEntry(eName: string, update?: boolean): EventsRegistryEntry | undefined {
-        return this._getEventEntry(eName.split(":"), undefined, update);
-    }
+    // private _findEventEntry(eName: string, update?: boolean): EventsRegistryEntry | undefined {
+    //     return this._getEventEntry(eName.split(":"), undefined, update);
+    // }
 
     private _checkEventNameValidity(en: string) {
         const reg = /(?<listenallerror>.*\*.+)|(?<consequentcolons>:{2,})|(?<spacescolons>:\s+:)|(?<finalcolon>^.*:$)|(?<startingcolon>^:.*$)|(?<spacesfound>^[a-zA-Z:]*\s+[a-zA-Z:]*$)/gi;
@@ -313,7 +309,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
 
     // da chiamare nell' ON
     private _addListener(c: ComponentInternalInstance, eName: string, h: EventsBackboneEventHandler, opts?: EventsBackboneSpineEntryOption) {
-        const testEntry = this._findEventEntry(eName, true);
+        const testEntry = this._getEventEntry(eName.split(":"), undefined, true);
         if(testEntry) {
             this._addListenerEntry(c, testEntry.symbol, h, opts);
             this._addCompEntrySymbol(c, testEntry.symbol);
@@ -325,22 +321,21 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         if(!listenersEntries) {
             this.lstnrsRegistry.set(s, new Map([[c, new Map([[h, opts]])]]));
         } else {
-            listenersEntries.set(c, new Map)
             const cListeners = listenersEntries.get(c);
-            if(!cListeners) {
-                listenersEntries.set(c, new Map([[h,opts]]));
-            } else {
-                cListeners.set(h, opts);
+            if(cListeners) {
+                !cListeners.has(h) ? cListeners.set(h, opts) : undefined;
+                return;
             }
+            listenersEntries.set(c, new Map([[h, opts]]));
         }
     }
 
     private _addCompEntrySymbol(c: ComponentInternalInstance, s: Symbol) {
-        if(!this.compsRegistry.has(c)) {
-            this.compsRegistry.set(c, new Set([s]));
+        if(this.compsRegistry.has(c)) {
+            this.compsRegistry.get(c)?.add(s);
             return;
         }
-        this.compsRegistry.get(c)?.add(s);
+        this.compsRegistry.set(c, new Set([s]));
     }
 
     // remove functions
@@ -378,7 +373,7 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
 
     // da chiamare nell' OFF
     private _removeListener(c: ComponentInternalInstance, eName: string, h: EventsBackboneEventHandler) {
-        const testEntry = this._findEventEntry(eName);
+        const testEntry = this._getEventEntry(eName.split(":"));
         if(testEntry) {
             this._removeListenerEntry(c, testEntry.symbol, h);
             const listenersEntries = this.lstnrsRegistry.get(testEntry.symbol);
@@ -411,23 +406,21 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         if(comp && h) {
             this._removeListener(comp, ev, h);
         } else if(comp && !h) {
-            this.offAll(uid);
+            this.offAll(comp);
         }
     }
 
-    offAll(uid: number): void {
-        const comp = this._getComponentFromUid(uid);
-        if(comp) {
-            const evSyms = this.compsRegistry.get(comp);
-            if(evSyms) {
-                evSyms.forEach((es: Symbol) => {
-                    const componentHandlers = this.lstnrsRegistry.get(es);
-                    if(componentHandlers && componentHandlers.has(comp)) {
-                        componentHandlers.delete(comp);
-                    }
-                })
-                this.compsRegistry.delete(comp);
-            }
+    offAll(c: ComponentInternalInstance): void {
+        // const comp = this._getComponentFromUid(uid);
+        const evSyms = this.compsRegistry.get(c);
+        if(evSyms) {
+            evSyms.forEach((es: Symbol) => {
+                const componentHandlers = this.lstnrsRegistry.get(es);
+                if(componentHandlers && componentHandlers.has(c)) {
+                    componentHandlers.delete(c);
+                }
+            })
+            this.compsRegistry.delete(c);
         }
     }
 }
@@ -438,38 +431,49 @@ const EventsBackboneFactory = function(ctor: EventsBackboneSpineConstructor): Ev
 
 export const BB: EventsBackboneSpine = EventsBackboneFactory(EventsBackboneSpine);
 
+export function removeAllEventBackboneListeners(comp?: ComponentInternalInstance) {
+    comp ? BB.offAll(comp) : undefined;
+}
+
+export function removeEventListeners(dp: EventsBackboneDirectiveParams, comp?: ComponentInternalInstance) {
+    if(comp) {
+        for (const eventKey in dp) {
+            if(!Array.isArray(dp[eventKey])) {
+                console.warn(`${comp.type.__name || comp.type.name} - eventKey value for ${eventKey} must be an array`);
+            } else {
+                for (const handlerParams of dp[eventKey]) {
+                    BB.off(comp.uid, eventKey, handlerParams.handler);
+                }
+            }
+        }
+    }
+}
+
+export function addEventBackboneListeners(dp: EventsBackboneDirectiveParams, comp?: ComponentInternalInstance, replace?: boolean) {
+    removeAllEventBackboneListeners(replace && comp ? comp : undefined);
+    if(comp) {
+        for (const eventKey in dp) {
+            if(Array.isArray(dp[eventKey])) {
+                for (const handlerParams of dp[eventKey]) {
+                    BB.on(comp, eventKey, handlerParams.handler, handlerParams.options);
+                }
+            } else {
+                console.warn(`${comp.type.__name || comp.type.name} - eventKey value for ${eventKey} must be an array`);
+            }
+        }
+    }
+}
+
 export const EventsBackBoneDirective: ObjectDirective<any, EventsBackboneDirectiveParams> = {
     mounted(el: HTMLElement, binding: DirectiveBinding, vnode: any) {
-        const comp = binding.instance?.$;
-        if(comp) {
-            for (const eventKey in binding.value) {
-                if(!Array.isArray(binding.value[eventKey])) {
-                    console.warn(`${comp.type.__name || comp.type.name} - eventKey value for ${eventKey} must be an array`);
-                } else {
-                    for (const handlerParams of binding.value[eventKey]) {
-                        BB.on(comp, eventKey, handlerParams.handler, handlerParams.options);
-                    }
-                }
-            }
-        }
+        addEventBackboneListeners(binding.value, binding.instance?.$);
     },
     beforeUpdate(el: HTMLElement, binding: DirectiveBinding, vnode: any, prevVnode: any) {
-        const comp = binding.instance?.$;
-        comp ? BB.offAll(comp.uid) : undefined;
-        if(comp) {
-            for (const eventKey in binding.value) {
-                if(!Array.isArray(binding.value[eventKey])) {
-                    console.warn(`${comp.type.__name || comp.type.name} - eventKey value for ${eventKey} must be an array`);
-                } else {
-                    for (const handlerParams of binding.value[eventKey]) {
-                        BB.on(comp, eventKey, handlerParams.handler, handlerParams.options);
-                    }
-                }
-            }
-        }
+        console.log("TEST beforeUpdate");
+        console.log(binding);
+        addEventBackboneListeners(binding.value, binding.arg === 'update' && binding.instance?.$, binding.arg === 'update');
     },
     beforeUnmount(el: HTMLElement, binding: DirectiveBinding, vnode: any) {
-        const comp = binding.instance?.$;
-        comp ? BB.offAll(comp.uid) : undefined;
+        removeAllEventBackboneListeners(binding.instance?.$);
     }
 }

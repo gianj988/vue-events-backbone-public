@@ -29,7 +29,7 @@ export interface EventsBackboneSpineInterface {
         ev: string,
         h?: EventsBackboneEventHandler): void;
 
-    offAll(uid: number): void;
+    offAll(c: ComponentInternalInstance): void;
 }
 
 export interface installEventsBackbone {
@@ -57,16 +57,24 @@ export interface EventsBackboneSpineEntryOption {
     once?: boolean | ((backboneEvent: EventsBackboneSpineEvent) => boolean)
 }
 
-export type EventsBackboneDirectiveParam = { handler: EventsBackboneEventHandler, options?: EventsBackboneSpineEntryOption };
+export interface EventsBackboneDirectiveParam { handler: EventsBackboneEventHandler, options?: EventsBackboneSpineEntryOption }
 
-export type EventsBackboneDirectiveParams = { [key:string]: Array<EventsBackboneDirectiveParam> };
+export interface EventsBackboneDirectiveParams { [key:string]: Array<EventsBackboneDirectiveParam> }
+
+// new listeners/emitters
+
+export type EventsBackboneAddListenerFn = (ls: EventsBackboneDirectiveParams, replace?: true) => void;
+
+export type EventsBackboneRemoveListenerFn = (ls: EventsBackboneDirectiveParams) => void;
 
 export type EventsBackboneEmitFn = ((ev: string, data?: any, global?: boolean, eager?: boolean) => Promise<void>);
 
+// old emitters
+
 export type EventsBackboneEmitter = (<T>(data?: T, global?: boolean, eager?: boolean) => Promise<void>);
 
-export type EventsBackboneEmitters = { [evname:string]: EventsBackboneEmitter};
+export type EventsBackboneEmitters = { [evname:string]: EventsBackboneEmitter };
 
-export type EventsBackboneEmitterGenerator = <PT extends string | Array<string>>(evt: PT) => PT extends string ? EventsBackboneEmitter : EventsBackboneEmitters;
+export type EventsBackboneEmitterGenerator = <PT extends string | Array<string>>(evt: PT, c?: ComponentInternalInstance) => PT extends string ? EventsBackboneEmitter : EventsBackboneEmitters;
 
 export const createEventsBackboneEmitter: InjectionKey<EventsBackboneEmitterGenerator> = Symbol('EventsBackboneEmitter');
