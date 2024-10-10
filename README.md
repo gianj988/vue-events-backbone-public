@@ -8,6 +8,11 @@ an optional parameter to pass a specific component instance, useful in case of C
 - added 'update' arg to the directive to specify if it has to re-register handlers when the component updates its state.
 - further optimizations in backbone class
 
+### **1.4.1 CHANGES {backbwards compatible}**:
+
+- removed some logs left behind
+- fixed a bug related to when the directive subscribes listeners (onBeforeMount instead of previous onMounted);
+
 # EventsBackbone
 
 In Vue, custom events do not propagate through the components tree. A simple solution to this problem
@@ -88,7 +93,7 @@ Take note of nameOfYourChoice because it will become the actual directive name t
 
 #### 2.1 REGISTER EVENT LISTENERS USING THE DIRECTIVE
 
-This is the simplest case: if a component has to ALWAYS register listeners onMounted and unregister listeners onUnmounted, the directive does exactly that, automatically.
+This is the simplest case: if a component has to ALWAYS register listeners onBeforeMount and unregister listeners onBeforeUnmount, the directive does exactly that, automatically.
 
 The directive takes an object of type EventsBackboneDirectiveParams, which has this definition
 ```
