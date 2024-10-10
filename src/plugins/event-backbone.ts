@@ -465,12 +465,10 @@ export function addEventBackboneListeners(dp: EventsBackboneDirectiveParams, com
 }
 
 export const EventsBackBoneDirective: ObjectDirective<any, EventsBackboneDirectiveParams> = {
-    mounted(el: HTMLElement, binding: DirectiveBinding, vnode: any) {
+    beforeMount(el: HTMLElement, binding: DirectiveBinding, vnode: any) {
         addEventBackboneListeners(binding.value, binding.instance?.$);
     },
     beforeUpdate(el: HTMLElement, binding: DirectiveBinding, vnode: any, prevVnode: any) {
-        console.log("TEST beforeUpdate");
-        console.log(binding);
         addEventBackboneListeners(binding.value, binding.arg === 'update' && binding.instance?.$, binding.arg === 'update');
     },
     beforeUnmount(el: HTMLElement, binding: DirectiveBinding, vnode: any) {

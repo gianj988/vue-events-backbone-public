@@ -1,6 +1,6 @@
 {
   "name": "vue-events-backbone",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "author": {
     "name": "Gianluca Pistorello",
     "email": "gianj988@gmail.com"
@@ -25,6 +25,7 @@
     "event-handling",
     "event-listener",
     "event-management",
+    "event-transformation",
     "event-chain",
     "global-events",
     "event-driven",
