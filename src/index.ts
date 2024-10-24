@@ -12,7 +12,7 @@ import {getCurrentInstance} from "vue";
 import {
     EventsBackBoneDirective as ebDir,
     BB,
-    addEventBackboneListeners, removeEventListeners
+    addEventBackboneListeners, removeEventListeners, EventsBackboneSpine
 } from "./plugins/event-backbone.ts";
 
 export const createEventsBackboneEmitter = createEmitFunctionSymb;
@@ -132,6 +132,6 @@ const eventsBackboneSpineInstaller: installEventsBackbone = {
 export default eventsBackboneSpineInstaller
 
 // for a more subtle control, give access to instance of backbone
-// export function useBackbone(): EventsBackboneSpine {
-//     return BB;
-// }
+export function useBackbone(): EventsBackboneSpine {
+    return BB;
+}

@@ -50,6 +50,7 @@ export interface EventsBackboneSpineEvent {
     stopPropagation: (() => void)
     once: (() => void)
     transformEvent: ((newName: string, newData?: any) => void)
+    emitEvent: EventsBackboneEmitFn
 }
 
 export interface EventsBackboneSpineEntryOption {
@@ -67,7 +68,7 @@ export type EventsBackboneAddListenerFn = (ls: EventsBackboneDirectiveParams, re
 
 export type EventsBackboneRemoveListenerFn = (ls: EventsBackboneDirectiveParams) => void;
 
-export type EventsBackboneEmitFn = ((ev: string, data?: any, global?: boolean, eager?: boolean) => Promise<void>);
+export type EventsBackboneEmitFn = ((ev: string, data?: any, global?: boolean, eager?: false) => Promise<void>);
 
 // old emitters
 

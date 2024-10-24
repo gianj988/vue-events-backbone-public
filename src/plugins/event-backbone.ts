@@ -24,6 +24,42 @@ type ListenersRegistry = Map<Symbol, Map<ComponentInternalInstance, ComponentLis
 
 type RegisteredComponentsRegistry = Map<ComponentInternalInstance, Set<Symbol>>
 
+declare type dopedComponentInternalInstance = ComponentInternalInstance & {
+    watchedIsUnmounted: boolean
+    isUnmountedCallbacks: Array<() => void>
+}
+
+const dopeComponentInstance = function(c: ComponentInternalInstance): dopedComponentInternalInstance {
+    c = Object.defineProperties(c, {
+        watchedIsUnmounted: {
+            enumerable: true,
+            writable: true,
+            value: c.isUnmounted
+        },
+        isUnmountedCallbacks: {
+            enumerable: true,
+            writable: true,
+            value: [] as Array<() => void>
+        }
+    })
+    return Object.defineProperty(c, "isUnmounted", {
+        get() { return this.watchedIsUnmounted },
+        set(v: boolean) {
+          if(v !== this.watchedIsUnmounted) {
+              try {
+                  for(const ucb of this.isUnmountedCallbacks) {
+                      ucb();
+                  }
+                  this.isUnmountedCallbacks.length = 0;
+              } catch(e: any) {
+                  console.error(e);
+              }
+          }
+          this.watchedIsUnmounted = v;
+        }
+    }) as dopedComponentInternalInstance;
+}
+
 export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     private readonly evntsTree: EventsRegistry;
     private readonly lstnrsRegistry: ListenersRegistry;
@@ -155,12 +191,12 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
                     this.propagationStopped = !this.global;
                     return;
                 }
-                console.warn(`${this.eventName} - can not stop the propagation of an event emitted global.`);
+                console.warn(`${this.eventName} - can not stop the propagation of an event emitted globally.`);
             },
             once: () => {},
             transformEvent: function (nn: string, nd?: any) {
                 if(this.global) {
-                    console.warn(`Cannot transform event ${this.eventName} into ${nn} as ${this.eventName} was emitted globally.`);
+                    console.warn(`Cannot transform event ${this.eventName} into ${nn} as ${this.eventName} has been emitted globally.`);
                     return;
                 }
                 try {
@@ -172,6 +208,9 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
                     console.error(`Error trying to transform event ${this.eventName} into ${nn}`);
                     console.error(e);
                 }
+            },
+            emitEvent: function(ev: string, data?: any, global?: boolean, eager?: false): Promise<void> {
+                return mainSelf.emitEvent(this.handlerCallerComponentInstance, ev, data, { global, eager });
             }
         }
         bEvt.transformEvent = bEvt.transformEvent.bind(bEvt); // ensure this reference
@@ -280,10 +319,6 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         return this._getEventEntry(gs, currentEntry, update);
     }
 
-    // private _findEventEntry(eName: string, update?: boolean): EventsRegistryEntry | undefined {
-    //     return this._getEventEntry(eName.split(":"), undefined, update);
-    // }
-
     private _checkEventNameValidity(en: string) {
         const reg = /(?<listenallerror>.*\*.+)|(?<consequentcolons>:{2,})|(?<spacescolons>:\s+:)|(?<finalcolon>^.*:$)|(?<startingcolon>^:.*$)|(?<spacesfound>^[a-zA-Z:]*\s+[a-zA-Z:]*$)/gi;
         const matches = reg.exec(en);
@@ -390,10 +425,15 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
         try {
             ev = ev.trim()
             if(ev.length === 0) {
-                throw new Error("Event name can not be an empty string");
+                console.error("Event name can not be an empty string");
+                return;
             }
+            let dc = dopeComponentInstance(c);
             this._checkEventNameValidity(ev);
-            this._addListener(c, ev, h, opts);
+            this._addListener(dc, ev, h, opts);
+            dc.isUnmountedCallbacks.push(() => {
+                this.offAll(dc);
+            })
         } catch(e: any) {
             console.error(e);
         }
@@ -411,7 +451,6 @@ export class EventsBackboneSpine implements EventsBackboneSpineInterface {
     }
 
     offAll(c: ComponentInternalInstance): void {
-        // const comp = this._getComponentFromUid(uid);
         const evSyms = this.compsRegistry.get(c);
         if(evSyms) {
             evSyms.forEach((es: Symbol) => {

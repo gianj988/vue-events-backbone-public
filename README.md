@@ -13,6 +13,13 @@ an optional parameter to pass a specific component instance, useful in case of C
 - removed some logs left behind
 - fixed a bug related to when the directive subscribes listeners (onBeforeMount instead of previous onMounted);
 
+### **1.4.2 CHANGES {backwards compatible}**:
+
+- **emitEvent** function in EventsBackboneSpineEvent object to emit other custom events through the backbone
+directly inside handlers. It returns the new Promise and the emitter component is that which is currently handling the previous event.
+- Now when components unmount, they unsubscribe their registered backbone listeners without the need to handle it manually
+inside onBeforeUnmount or onUnmounted
+
 # EventsBackbone
 
 In Vue, custom events do not propagate through the components tree. A simple solution to this problem
@@ -33,6 +40,7 @@ has consumed all handlers (in eager mode or lazy)
 - stopPropagation capability
 - once capability
 - transformEvent capability inside handlers to avoid stopPropagation and re-emitting the new event.
+- emitEvent capability inside handlers to emit another event on the fly
 - custom event data to pass (even functions, objects etc...)
 - possibility to emit an event globally instead of DOM-like events propagation
 - error handling to avoid interrupting the propagation
@@ -198,9 +206,7 @@ customRemoveEventListenerVar(exampleListeners);
 This pattern is required to save you the fuss of getting the internal component instance and create the function yourself.
 That's why you have to call them inside one of lifecycle hooks.
 
-**AAA Remember that if you need to handle the register/unregister cycle manually, you have the responsibility of managing them accordingly with the component lifecycle.
-If you do not take care of this, components may be unmounted but listeners remain registered!
-I advise you to always call ```customRemoveEventListenerVar(exampleListeners);``` inside onBeforeUnmount or onUnmounted hooks.**
+When a component that registered listeners is unmounted (through the directive or the customAddEventListenerVar), it automatically unregisters them.
 
 ---
 
@@ -378,10 +384,14 @@ follows the components tree branch from the emitter child to the root (optional,
 9) **stopPropagation**: function to call inside the handler to stop propagation of the custom event **(if event has not been emitted globally)**
 10) **once**: function to call inside the handler to unregister it once executed.
 11) **transformEvent**: function to transform current handled event into another event. **(if event has not been emitted globally)**
+12) **emitEvent**: function to emit another event from inside an event handler directly. The Emitter Component Instance will be
+the component that is managing the handler in which emitEvent has been called
 
 The transformEvent function takes two parameters:
 1) the new event name (required, hierarchy is valid and naming rules will be applied)
 2) the new data to pass with the new event (optional, if nothing is passed old data will be kept)
+
+The emitEvent function takes the same parameters of an EventBackboneEmitFn and returns the new related Promise.
 
 It is noteworthy that the **once** function works with the original event, not the transformed event.
 So for example, if I emitted **"x:y"** event, inside one of the handlers **transformEvent** has been called
