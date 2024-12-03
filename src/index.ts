@@ -1,46 +1,18 @@
 import type {App, ComponentInternalInstance} from "vue";
 
 import {
-    createEventsBackboneEmitter as createEmitFunctionSymb,
-    EventsBackboneEmitter,
-    EventsBackboneEmitters, EventsBackboneEmitFn,
+    EventsBackboneEmitFn,
     EventsBackboneAddListenerFn,
     EventsBackboneDirectiveParams, EventsBackboneRemoveListenerFn,
     installEventsBackbone
 } from "./types";
 import {getCurrentInstance} from "vue";
+import  { useBackboneBrain as UB, createNeuron as CN } from "./plugins/backbone-axon.ts";
 import {
     EventsBackBoneDirective as ebDir,
     BB,
     addEventBackboneListeners, removeEventListeners, EventsBackboneSpine
 } from "./plugins/event-backbone.ts";
-
-export const createEventsBackboneEmitter = createEmitFunctionSymb;
-
-function createEmitterFunctions(evt: string, c?: ComponentInternalInstance): EventsBackboneEmitter;
-function createEmitterFunctions(evt: Array<string>, c?: ComponentInternalInstance): EventsBackboneEmitters;
-function createEmitterFunctions(evt: string | Array<string>, c?: ComponentInternalInstance): EventsBackboneEmitter | EventsBackboneEmitters {
-    const cInstance = c || getCurrentInstance();
-    if(cInstance) {
-        if(evt instanceof Array) {
-            const emitters: EventsBackboneEmitters = {};
-            for(const e of evt) {
-                emitters[e] = function <E>(data?: E, global?: boolean, eager?: boolean) {
-                    return BB.emitEvent<typeof data>(cInstance, e, data as typeof data, { global: global, eager: eager });
-                };
-            }
-            return emitters;
-        }
-        return function <E>(data?: E, global?: boolean, eager?: boolean) {
-            return BB.emitEvent<typeof data>(cInstance, evt, data as typeof data, { global: global, eager: eager });
-        } as EventsBackboneEmitter;
-    }
-    console.warn("No current component instance. createBackboneEmitter has to be called inside a lifecycle hook or you have to pass a component instance to the function.");
-    return function<E>(data?: E, global?: boolean, eager?: boolean) {
-        console.warn("Default backbone emitter called. No event transmitted through the backbone.");
-        return Promise.resolve();
-    } as EventsBackboneEmitter;
-}
 
 export function defineRemoveEventListeners(c?: ComponentInternalInstance): EventsBackboneRemoveListenerFn {
     const cInstance = c || getCurrentInstance();
@@ -118,6 +90,10 @@ export function defineBackboneEmits(evt?: Array<string>, c?: ComponentInternalIn
 // the Events Backbone Directive
 export const EventsBackBoneDirective = ebDir;
 
+export const useBackboneBrain = UB;
+
+export const createNeuron = CN;
+
 // the plugin installer object
 const eventsBackboneSpineInstaller: installEventsBackbone = {
     install: (app: App): void => {
@@ -126,7 +102,7 @@ const eventsBackboneSpineInstaller: installEventsBackbone = {
             return;
         }
         app.config.globalProperties.$EventsBackBone = BB;
-        app.provide(createEventsBackboneEmitter, createEmitterFunctions);
+        app.config.globalProperties.$EventsBackboneBrain = UB();
     }
 }
 export default eventsBackboneSpineInstaller

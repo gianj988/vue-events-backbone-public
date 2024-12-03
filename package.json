@@ -1,6 +1,6 @@
 {
   "name": "vue-events-backbone",
-  "version": "1.4.2",
+  "version": "2.0.0-beta.0",
   "author": {
     "name": "Gianluca Pistorello",
     "email": "gianj988@gmail.com"
@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "LICENSE",
+    "AXON-BACKBONE-README.md",
     "README.md"
   ],
   "bugs": "https://github.com/gianj988/vue-events-backbone-public/issues",
@@ -42,7 +43,9 @@
     "vue3",
     "queue",
     "emit",
-    "backbone"
+    "backbone",
+    "components-link",
+    "components-linking"
   ],
   "main": "./dist/vue-events-backbone.umd.cjs",
   "module": "./dist/vue-events-backbone.js",
