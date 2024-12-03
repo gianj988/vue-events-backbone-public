@@ -1,6 +1,6 @@
 # BackboneAxon
 
-This is a more specific version to link different components managing at the same time their respective lifecycles
+This is a tool to create links between different components managing at the same time their respective lifecycles
 automatically.
 
 This submodule exports a "createNeuron" function that basically creates an "anchor" for a component instance.
@@ -14,10 +14,11 @@ so could be from 0 to N instances of this CompA.
 **createNeuron** function adds each CompA instance to the same BackboneNeuron, and it returns the CompA instance 
 dendrite object.
 
-from a dendrite you can request a link to another neuron, this link is called the "axon".
-The target neuron does not to necessarily be instanciated, the request it's a lazy request that dinamically creates the
-axon when the target neuron is instanciated.
-The "brain", behind the scene, takes care of all the cycles of the neurons and axons. This means that axons are being
+From a Neuron (or one of its Dendrites) you can request to establish a link to another Neuron.
+This link is called the "Axon".
+The Target Neuron is not required when you request the Axon because the request it's lazy and awaits for the Target Neuron 
+to be created if it doesn't exist yet.
+The "brain", behind the scene, takes care of all the cycles of Neurons and Axons. This means that axons are being
 connected, cut and re-connected as target neurons are instanciated or destroyed.
 
 Let's get to the code:
@@ -30,8 +31,7 @@ To register a dendrite inside a component you have to...:
 // import the necessary from the vue-events-backbone package
 import {
   createNeuron,
-  EventsBackboneDendriteInterface,
-  EventsBackboneDirectiveParams
+  EventsBackboneDendriteInterface
 } from "vue-events-backbone";
 
 // define the variable where to store the dendrite instance
@@ -52,7 +52,8 @@ onMounted(() => {
 
 Ok, what's happening here? 
 1) createNeuron function registers the neuron with the given key (or updates the neuron with the same key if it 
-already exists) inside the backbone-brain. It also creates the dendrite for the current component instance.
+already exists) inside the backbone-brain. 
+It also creates and returns the dendrite for the current component instance.
 
 2) the second parameter of the createNeuron function registers a handler with the key: key-to-the-handler-function
 inside the dendrite.

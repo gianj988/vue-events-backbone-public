@@ -81,16 +81,8 @@ This is the simplest case: if a component has to ALWAYS register listeners onBef
 
 The directive takes an object of type EventsBackboneDirectiveParams, which has this definition
 ```
-// these types are all exported by this package
+// these types are exported by this package
 type EventsBackboneEventHandler = ((be: EventsBackboneSpineEvent) => void);
-
-// these options will be removed in 2.0.0 version because they are now replicated as callable functions inside the **EventsBackboneSpineEvent** object
-// passed to the handler function.
-interface EventsBackboneSpineEntryOption {
-    stopPropagation?: boolean | ((be: EventsBackboneSpineEvent) => boolean)
-    once?: boolean | ((be: EventsBackboneSpineEvent) => boolean)
-}
-
 interface EventsBackboneDirectiveParams = { [key:string]: Array<EventsBackboneEventHandler> };
 ```
 ##### Directive Usage:
@@ -126,7 +118,8 @@ internal instance reference, that you'll have to pass as parameter.
 2) in lifecycle hooks when used within ```<script setup>```, here you can avoid calling getCurrentInstance(), internally these functions can
 retrieve the instance automatically
 
-In both cases, they'll return a function that can be used to register (returned from defineAddEventListeners) and unregister (returned from defineRemoveEventListeners) listeners for that component.
+In both cases, they'll return a function that can be used to register (returned from defineAddEventListeners) and
+unregister (returned from defineRemoveEventListeners) listeners for that component.
 
 ##### Generator Functions and Generated Functions Usage:
 
