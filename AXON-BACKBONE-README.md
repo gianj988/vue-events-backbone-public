@@ -113,7 +113,7 @@ The logic behind this is: because two neurons could represent two components tha
 if you previously requested an axon linking them, you'll probably want this link to exist every time these components
 are both mounted.
 
-You can always destroy an axon in two ways (the result will be exactly the same):
+You can always destroy an axon manually if needed. It can be done in two ways (the result is exactly the same):
 
 ```
 way 1 // directly from the single dendrite
